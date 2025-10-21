@@ -1,0 +1,76 @@
+package main
+
+import (
+	"crypto/tls"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"strings"
+)
+
+func main() {
+	url := "https://197.188.75.221:8080/cgi-bin/sysconf.cgi?page=login.asp&action=login"
+
+	// Request body
+	payload := "user_name=admin&user_passwd=admin"
+
+	// Create a new HTTP request
+	req, err := http.NewRequest("POST", url, strings.NewReader(payload))
+	if err != nil {
+		fmt.Println("Error creating the request:", err)
+		return
+	}
+
+	// Set request headers
+	req.Header.Set("Host", "197.188.75.221:8080")
+	req.Header.Set("Cache-Control", "max-age=0")
+	req.Header.Set("Sec-Ch-Ua", "")
+	req.Header.Set("Sec-Ch-Ua-Mobile", "?0")
+	req.Header.Set("Sec-Ch-Ua-Platform", "\"\"")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	req.Header.Set("Origin", "https://197.188.75.221:8080")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.199 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-User", "?1")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Referer", "https://197.188.75.221:8080/login.asp?1690208815449")
+	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Connection", "close")
+	req.Header.Set("Pragma", "no-cache")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.ContentLength = int64(len(payload)) // Automatically calculate Content-Length
+
+	// Create a custom HTTP client with SSL certificate verification disabled
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: tr}
+
+	// Send the HTTP request using the custom client
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("Error sending the request:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read and print the response headers
+	fmt.Println("Response Headers:")
+	for key, value := range resp.Header {
+		fmt.Printf("%s: %s\n", key, value)
+	}
+
+	fmt.Println("\nResponse Body:")
+	// Read and print the response body
+	responseBody, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error reading the response body:", err)
+		return
+	}
+
+	fmt.Println(string(responseBody))
+}

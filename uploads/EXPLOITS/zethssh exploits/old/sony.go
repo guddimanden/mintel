@@ -1,0 +1,114 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
+)
+
+func main() {
+	file, err := os.Open("ips.txt")
+	if err != nil {
+		fmt.Println("Error opening file:", err)
+		return
+	}
+	defer file.Close()
+
+	successfulFile, err := os.OpenFile("successful.txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		fmt.Println("Error opening file:", err)
+		return
+	}
+	defer successfulFile.Close()
+
+	scanner := bufio.NewScanner(file)
+	ipCh := make(chan string)
+	wg := sync.WaitGroup{}
+
+	// Launch worker goroutines
+	for i := 0; i < 10; i++ {
+		go func() {
+			for ip := range ipCh {
+				processIP(ip, successfulFile)
+				wg.Done()
+			}
+		}()
+	}
+
+	// Read IPs from file and send them to worker goroutines
+	for scanner.Scan() {
+		ipPort := strings.TrimSpace(scanner.Text())
+		wg.Add(1)
+		ipCh <- ipPort
+	}
+
+	close(ipCh)
+	wg.Wait()
+
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading file:", err)
+		return
+	}
+}
+
+func processIP(ipPort string, successfulFile *os.File) {
+	urlIndex := fmt.Sprintf("http://%s/en/l4/index.html", ipPort)
+	urlAdvance := fmt.Sprintf("http://%s/en/l4/advance.html", ipPort)
+
+	// Check index.html URL
+	indexResp, err := sendRequest(urlIndex)
+	if err != nil {
+		fmt.Println("Error sending request to", urlIndex, ":", err)
+		return
+	}
+	defer indexResp.Body.Close()
+
+	// Check advance.html URL if index.html returns 404
+	if indexResp.StatusCode == http.StatusNotFound {
+		advanceResp, err := sendRequest(urlAdvance)
+		if err != nil {
+			fmt.Println("Error sending request to", urlAdvance, ":", err)
+			return
+		}
+		defer advanceResp.Body.Close()
+
+		if advanceResp.StatusCode == http.StatusOK {
+			successfulFile.WriteString(fmt.Sprintf("Successful login to %s (Advance)\n", ipPort))
+			return
+		}
+	} else if indexResp.StatusCode == http.StatusOK {
+		successfulFile.WriteString(fmt.Sprintf("Successful login to %s (Index)\n", ipPort))
+		return
+	}
+
+	fmt.Println("Login failed for", ipPort)
+}
+
+func sendRequest(url string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set request headers
+	req.Header.Set("Cache-Control", "max-age=0")
+	req.Header.Set("Authorization", "Basic YWRtaW46YWRtaW4=")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.199 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	req.Header.Set("Referer", fmt.Sprintf("http://%s/en/index.html", url))
+	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Connection", "close")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}

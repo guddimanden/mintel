@@ -1,0 +1,5 @@
+for i in open('killme.txt').read().splitlines():
+    if ":" not in i:
+        with open('ok.txt', 'a+') as f:
+            f.write(f'{i}\n')
+            f.close()

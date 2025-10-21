@@ -1,0 +1,67 @@
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+)
+
+func main() {
+	url := "http://185.151.108.184:7998/HNAP1/"
+
+	payload := []byte(`<?xml version="1.0" encoding="utf-8"?>
+	<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+		<soap:Body>
+			<Login xmlns="http://purenetworks.com/HNAP1/">
+				<Action>request</Action>
+				<Username>admin</Username>
+				<LoginPassword></LoginPassword>
+				<Captcha></Captcha>
+			</Login>
+		</soap:Body>
+	</soap:Envelope>`)
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	if err != nil {
+		fmt.Println("Error creating request:", err)
+		return
+	}
+
+	req.Header.Set("Host", "185.151.108.184:7998")
+	req.Header.Set("Content-Length", "400")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("HNAP_AUTH", "8FFEBF2A47F42DC3F11BD167DB08326C 1692959417022")
+	req.Header.Set("SOAPAction", `"http://purenetworks.com/HNAP1/Login"`)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.97 Safari/537.36")
+	req.Header.Set("Content-Type", "text/xml; charset=UTF-8")
+	req.Header.Set("Origin", "http://185.151.108.184:7998")
+	req.Header.Set("Referer", "http://185.151.108.184:7998/info/Login.html")
+	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Cookie", "uid=null")
+	req.Header.Set("Connection", "close")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("Error sending request:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error reading response body:", err)
+		return
+	}
+
+	fmt.Println("Response Headers:")
+	for key, value := range resp.Header {
+		fmt.Printf("%s: %s\n", key, value)
+	}
+
+	fmt.Println("\nResponse Body:")
+	fmt.Println(string(body))
+}

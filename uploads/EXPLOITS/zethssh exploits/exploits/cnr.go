@@ -1,0 +1,66 @@
+package main
+
+import (
+    "fmt"
+    "net/http"
+    "os"
+    "strings"
+)
+
+func main() {
+    // Define the URL and request headers
+    url := "http://106.96.42.85:8080/"
+    headers := map[string]string{
+        "Host":                      "106.96.42.85:8080",
+        "Cache-Control":             "max-age=0",
+        "Upgrade-Insecure-Requests": "1",
+        "User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.5938.132 Safari/537.36",
+        "Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Encoding":           "gzip, deflate, br",
+        "Accept-Language":           "en-US,en;q=0.9",
+        "Connection":                "close",
+    }
+
+    req, err := http.NewRequest("GET", url, nil)
+    if err != nil {
+        //fmt.Println("Error creating request:", err)
+        return
+    }
+    for key, value := range headers {
+        req.Header.Set(key, value)
+    }
+
+    // Send the HTTP request
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        //fmt.Println("Error sending request:", err)
+        return
+    }
+    defer resp.Body.Close()
+
+    if strings.Contains(resp.Header.Get("Www-Authenticate"), "CNR-") {
+
+        fmt.Println("[cnr] device successfully identified:", resp.Request.URL.Host)
+        
+        writeToFile("cnr.txt", resp.Request.URL.Host)
+    } else {
+        //fmt.Println("Device not identified as CNR device")
+    }
+}
+
+func writeToFile(filename, data string) {
+    file, err := os.Create(filename)
+    if err != nil {
+        fmt.Println("Error creating file:", err)
+        return
+    }
+    defer file.Close()
+
+    _, err = file.WriteString(data)
+    if err != nil {
+        fmt.Println("Error writing to file:", err)
+        return
+    }
+    //fmt.Println("Successfully wrote to", filename)
+}

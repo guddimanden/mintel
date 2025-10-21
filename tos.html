@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IntelBreach — Terms of Service</title>
+<style>
+:root{--bg:#000;--accent:#ff4c8b;--muted:#99a;}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow:hidden;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial;}
+body{background:#000;color:#eaeaf2;display:flex;justify-content:center;align-items:center;}
+canvas#bgCanvas{position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;display:block;}
+.panel{position:relative;z-index:1;max-width:900px;padding:40px;background:linear-gradient(180deg, rgba(20,20,20,0.9), rgba(10,10,10,0.95));border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,0.5);transform-style:preserve-3d;transition:transform 0.1s ease;}
+.panel h1{color:var(--accent);margin-bottom:24px;font-size:2rem;}
+.panel h2{margin-top:20px;margin-bottom:12px;color:#fff;font-size:1.4rem;}
+.panel p{color:#eaeaf2;margin-bottom:12px;}
+.back-home{display:inline-block;margin-top:20px;padding:10px 16px;border-radius:999px;font-weight:700;color:#fff;background:linear-gradient(90deg,var(--accent),#ff6b9f);transition:0.2s;}
+.back-home:hover{transform:translateY(-2px);}
+</style>
+</head>
+<body>
+<canvas id="bgCanvas"></canvas>
+<div class="panel" id="tosPanel">
+  <h1>Terms of Service</h1>
+  <p>Welcome to IntelBreach. By using this website, you agree to the following terms.</p>
+
+  <h2>1. Use of Services</h2>
+  <p>All materials on this site are intended for informational and educational purposes. Users must act responsibly.</p>
+
+  <h2>2. Ethical Responsibility</h2>
+  <p>All activities must be legal and authorized. No illegal use is allowed.</p>
+
+  <h2>3. Account Responsibility</h2>
+  <p>Admin access is confidential. Users are responsible for their credentials.</p>
+
+  <h2>4. Content Disclaimer</h2>
+  <p>All content is educational and legal. No harmful software or exploits are hosted.</p>
+
+  <h2>5. Limitation of Liability</h2>
+  <p>IntelBreach is not liable for misuse of the site or content. Users assume responsibility for their actions.</p>
+
+  <h2>6. Governing Law</h2>
+  <p>These terms are governed by local applicable laws.</p>
+
+  <a class="back-home" href="index.html">← Back to Home</a>
+</div>
+
+<script>
+// 3D Panel mouse effect
+const panel = document.getElementById('tosPanel');
+document.addEventListener('mousemove', e => {
+    const x = e.clientX / window.innerWidth - 0.5;
+    const y = e.clientY / window.innerHeight - 0.5;
+    panel.style.transform = `rotateY(${x*15}deg) rotateX(${-y*15}deg) translateZ(20px)`;
+});
+
+// Interactive background canvas (black background with subtle particles)
+const canvas = document.getElementById('bgCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const particles = [];
+for(let i=0;i<100;i++){
+    particles.push({
+        x: Math.random()*canvas.width,
+        y: Math.random()*canvas.height,
+        r: Math.random()*2+1,
+        vx: (Math.random()-0.5)*0.2,
+        vy: (Math.random()-0.5)*0.2
+    });
+}
+
+function animate(){
+    ctx.fillStyle = '#000';  // solid black background
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    particles.forEach(p=>{
+        p.x+=p.vx; p.y+=p.vy;
+        if(p.x<0||p.x>canvas.width)p.vx*=-1;
+        if(p.y<0||p.y>canvas.height)p.vy*=-1;
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+        ctx.fillStyle='rgba(255,76,139,0.1)';  // subtle pink particles
+        ctx.fill();
+    });
+
+    requestAnimationFrame(animate);
+}
+animate();
+
+window.addEventListener('resize',()=>{
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+</script>
+</body>
+</html>

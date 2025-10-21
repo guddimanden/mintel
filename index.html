@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>IntelBreach Archive</title>
+<style>
+:root{
+  --bg:#060606; --panel:#0b0b0b; --muted:#99a; --accent:#ff4c8b;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(255,76,139,0.03), transparent 10%),
+    linear-gradient(180deg,#050505 0%, #070707 100%);
+  color:#eaeaf2;
+  line-height:1.4;
+  padding-bottom:120px;
+}
+header{
+  position:sticky; top:0; z-index:50;
+  backdrop-filter: blur(6px);
+  background: linear-gradient(180deg, rgba(0,0,0,0.45), rgba(0,0,0,0.25));
+  border-bottom:1px solid rgba(255,255,255,0.03);
+}
+.nav{max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 18px;}
+.brand{font-weight:700;color:var(--accent);letter-spacing:1px;font-size:1.05rem}
+nav ul{display:flex;gap:14px;list-style:none;align-items:center}
+nav a.btn{
+  color: #e8e8ee;
+  padding:8px 12px;border-radius:8px;font-weight:600;font-size:0.95rem;
+  border:1px solid rgba(255,255,255,0.03);
+  background: linear-gradient(180deg, rgba(255,76,139,0.06), rgba(255,76,139,0.02));
+  transition:transform .12s ease, box-shadow .12s ease;
+}
+nav a.btn:hover{ transform:translateY(-3px); box-shadow:0 6px 20px rgba(255,76,139,0.08) }
+
+.hero{
+  display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;
+  padding:80px 18px 80px;min-height:48vh;position:relative;
+}
+.hero h1{
+  font-size:2.8rem;max-width:920px;line-height:1.05;
+  background:linear-gradient(90deg,var(--accent), #ff6b9f 40%, #ffd7e6 90%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  margin-bottom:16px;
+}
+.hero p{color:var(--muted);margin-bottom:24px;font-size:1.05rem}
+.hero .actions{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+.big-btn{
+  background:transparent;border:1px solid rgba(255,255,255,0.04);
+  padding:10px 18px;border-radius:999px;color:#fff;font-weight:700;
+  cursor:pointer;transition:transform .12s ease;
+}
+.big-btn.ghost{background:transparent;color:var(--muted);font-weight:600}
+.big-btn.primary{background:linear-gradient(90deg,var(--accent),#ff6b9f);box-shadow:0 8px 30px rgba(255,76,139,0.08)}
+
+/* Ads */
+.hero .ad-left, .hero .ad-right{
+  position:absolute;top:20%;width:120px;height:300px;background:#111;border:1px solid rgba(255,255,255,0.03);border-radius:8px;
+}
+.hero .ad-left{left:10px;}
+.hero .ad-right{right:10px;}
+.hero .ad-left img, .hero .ad-right img{
+  width:100%;height:100%;object-fit:cover;border-radius:8px;
+}
+
+/* Contact box (legal / ethical services) */
+.contact-box{
+  max-width:1100px;margin:18px auto;padding:14px;border-radius:12px;
+  background:linear-gradient(180deg, rgba(255,255,255,0.012), rgba(255,255,255,0.006));
+  border:1px solid rgba(255,255,255,0.03);display:flex;align-items:center;gap:16px;
+}
+.contact-box .left{flex:1}
+.contact-box h3{margin:0;color:var(--accent);font-size:1.05rem}
+.contact-box p{margin:6px 0;color:var(--muted)}
+.contact-box .handles{font-weight:700;color:#fff;margin-top:6px}
+.contact-box small{display:block;color:#b8b8c8;margin-top:8px;font-size:0.85rem}
+
+/* content */
+.wrap{max-width:1100px;margin:8px auto 28px;padding:0 18px}
+
+.index-panel{
+  background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.006));
+  border:1px solid rgba(255,255,255,0.03);
+  padding:24px;border-radius:12px;overflow:hidden;
+}
+.index-header{display:flex;align-items:center;justify-content:space-between;padding:12px;border-bottom:1px dashed rgba(255,255,255,0.02)}
+.path{font-weight:700;color:#fff;font-size:1.05rem}
+.legal{font-size:0.875rem;color:var(--muted)}
+
+table.index{
+  width:100%;border-collapse:collapse;margin-top:18px;font-size:0.95rem;
+}
+table.index thead th{ text-align:left;padding:12px;color:var(--muted);font-weight:600;font-size:0.85rem }
+table.index tbody td{padding:12px;border-top:1px dashed rgba(255,255,255,0.02);vertical-align:middle;position:relative}
+.icon{width:42px;text-align:center;color:var(--muted)}
+.name a{color:#fff;font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:8px;}
+.meta{color:var(--muted);font-size:0.92rem}
+.desc{color:#b8b8c8;font-size:0.86rem;margin-top:6px}
+.size{color:var(--muted);font-weight:600}
+
+/* download on right; appears when row hovered */
+.download-btn{
+  opacity:0; cursor:pointer; color:#ff6b9f; font-weight:700; position:absolute; right:12px; top:50%; transform:translateY(-50%);
+}
+tr:hover .download-btn{opacity:1;}
+
+/* breadcrumbs */
+.crumbs{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:0.92rem;margin-top:12px}
+.crumbs a{color:var(--muted)}
+.crumbs .sep{opacity:0.35}
+
+footer{margin-top:36px;padding:28px 18px;border-top:1px solid rgba(255,255,255,0.02);text-align:center;color:var(--muted)}
+footer .contact{margin-top:12px;color:#fff;font-weight:700}
+footer .tux-img {margin-top:16px;display:flex;justify-content:center;}
+footer .tux-img img {width:640px;height:467px;object-fit:contain;border-radius:12px;}
+
+@media (max-width:720px){
+  .hero h1{font-size:1.9rem}
+  table.index thead th{display:none}
+  table.index tbody td{display:block;padding:10px}
+  .icon{float:left;margin-right:10px}
+  .meta{margin-top:6px}
+  .contact-box{flex-direction:column;align-items:flex-start}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <div class="brand">IntelBreach</div>
+<nav>
+  <ul>
+    <li><a class="btn" role="button" onclick="showSection('home')">Home</a></li>
+    <li><a class="btn" role="button" onclick="showSection('archive')">Archive</a></li>
+    <li><a class="btn" role="button" onclick="showSection('botnets')">Botnets</a></li>
+    <li><a class="btn" role="button" onclick="showSection('exploits')">Exploits</a></li>
+    <li><a class="btn" role="button" onclick="showSection('scripts')">Scripts</a></li>
+    <li><a class="btn" href="/tos.html" target="_blank">ToS</a></li>
+    <li><a class="btn" href="/admin">Admin</a></li>
+  </ul>
+</nav>
+  </div>
+</header>
+
+<section class="hero" id="homeSection">
+  <div class="ad-left"><img src="left-ad.gif" alt="Ad Left"></div>
+  <div class="ad-right"><img src="right-ad.gif" alt="Ad Right"></div>
+  <h1>Welcome to IntelBreach</h1>
+  <p>Your archive for organized files.</p>
+  <div class="actions">
+    <button class="big-btn primary" onclick="showSection('archive')">Archive</button>
+    <button class="big-btn" onclick="showSection('botnets')">Botnets</button>
+    <button class="big-btn" onclick="showSection('exploits')">Exploits</button>
+    <button class="big-btn ghost" onclick="showSection('scripts')">Scripts</button>
+  </div>
+</section>
+
+<!-- Contact box: legal / ethical contact only -->
+<div class="contact-box" role="region" aria-label="Contact for ethical security services">
+  <div class="left">
+    <h3>Contact for Responsible Security Services</h3>
+    <p>For legitimate penetration testing, vulnerability disclosure coordination, or consultancy, DM on Discord or Telegram (professional inquiries only).</p>
+    <div class="handles">
+      Discord: <a href="https://discord.com/users/1394721447116800160" target="_blank" rel="noopener noreferrer">Zethssh</a> · Telegram: <span style="opacity:0.95">wifebeater32</span>
+    </div>
+    <small>Note: Dm for private Exploits...</small>
+  </div>
+</div>
+
+<main class="wrap">
+  <div id="indexView" class="index-panel" style="display:none">
+    <div class="index-header">
+      <div>
+        <div class="path" id="indexPath">Index of /</div>
+        <div class="crumbs" id="crumbs"></div>
+      </div>
+      <div class="legal">IntelBreach Archive</div>
+    </div>
+    <table class="index" aria-live="polite">
+      <thead>
+        <tr><th style="width:48px">Icon</th><th>Name</th><th>Last modified</th><th>Size</th><th>Description</th><th>Action</th></tr>
+      </thead>
+      <tbody id="indexBody"></tbody>
+    </table>
+  </div>
+</main>
+
+<footer>
+  <div>© 2025 IntelBreach — Made by Zeth</div>
+  <div class="contact">Join our partner Discord: <a href="https://discord.gg/vCbDJmFspM" target="_blank">W0rmh0l3</a></div>
+  <div class="tux-img"><img src="tux.webp" alt="Tux the Penguin"></div>
+</footer>
+
+<script>
+let currentPath = "/";
+
+function hideAll(){
+  document.getElementById('indexView').style.display='none';
+  document.getElementById('homeSection').style.display='none';
+}
+
+function showSection(name){
+  hideAll();
+  if(name==='home'){ document.getElementById('homeSection').style.display='flex'; return; }
+  if(name==='archive'){ fetchIndex('/'); }  // uhhh, this returns to the root directory
+  else { fetchIndex('/' + name.toUpperCase()); }
+}
+
+
+
+
+function downloadFolder(path, folderName){
+  
+  const url = `/api/download?dir=${encodeURIComponent(path)}`;
+  
+  const a = document.createElement('a');
+  a.href = url;
+  a.setAttribute('download', folderName + '.zip');
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+async function fetchIndex(path){
+  currentPath = path;
+  try{
+    const res = await fetch(`/api/list?dir=${encodeURIComponent(path)}`);
+    if(!res.ok) { console.error('Failed to fetch index', res.status); return; }
+    const data = await res.json();
+    renderIndex(data,path);
+  }catch(e){console.error(e);}
+}
+
+function renderIndex(data,path){
+  const indexView=document.getElementById('indexView');
+  const indexBody=document.getElementById('indexBody');
+  const indexPath=document.getElementById('indexPath');
+  const crumbs=document.getElementById('crumbs');
+  indexView.style.display='block';
+  indexPath.textContent='Index of '+path;
+  crumbs.innerHTML='';
+
+  const parts=path.split('/').filter(Boolean);
+  let acc='';
+  const rootA=document.createElement('a'); rootA.href='#'; rootA.textContent='/'; rootA.onclick=(e)=>{e.preventDefault(); fetchIndex('/');};
+  crumbs.appendChild(rootA);
+  parts.forEach(p=>{
+    const sep=document.createElement('span'); sep.textContent=' / '; crumbs.appendChild(sep);
+    acc+='/'+p;
+    const a=document.createElement('a'); a.href='#'; a.textContent=p; a.onclick=(e)=>{e.preventDefault(); fetchIndex(acc);};
+    crumbs.appendChild(a);
+  });
+
+  indexBody.innerHTML='';
+  if(!data.items || data.items.length===0){
+    indexBody.innerHTML='<tr><td colspan="6" style="color:var(--muted)">No files.</td></tr>';
+    return;
+  }
+
+  data.items.forEach(item=>{
+    const tr=document.createElement('tr');
+    const icon=item.type==='DIR'?'📁':'📄';
+    const nameA=document.createElement('a');
+    nameA.textContent=item.name;
+    nameA.href='#';
+    nameA.onclick=(e)=>{
+      e.preventDefault();
+      if(item.type==='DIR'){ fetchIndex(item.path); }
+      else {
+        
+        window.open(`/api/view${item.path}`, '_blank');
+      }
+    };
+
+    tr.innerHTML=`<td class="icon">${icon}</td>
+      <td class="name"></td>
+      <td class="meta">${item.mtime ? new Date(item.mtime).toISOString() : '-'}</td>
+      <td class="size">${item.size||'-'}</td>
+      <td class="desc"></td>
+      <td></td>`;
+    tr.querySelector('.name').appendChild(nameA);
+
+    // download button, shit won't work half the time but who cares.
+    if(item.type==='DIR'){
+      const btn = document.createElement('button');
+      btn.className = 'download-btn';
+      btn.textContent = 'Download';
+      btn.title = 'Download folder as .zip';
+      btn.onclick = (e) => { e.stopPropagation(); downloadFolder(item.path, item.name); };
+      // append to last td so button sits right side
+      tr.querySelector('td:last-child').appendChild(btn);
+    } else {
+      // Hover for button.
+      const fileBtn = document.createElement('button');
+      fileBtn.className = 'download-btn';
+      fileBtn.textContent = 'Download';
+      fileBtn.title = 'Download file';
+      fileBtn.onclick = (e) => { e.stopPropagation(); window.open(`/api/view${item.path}`, '_blank'); };
+      tr.querySelector('td:last-child').appendChild(fileBtn);
+    }
+
+    indexBody.appendChild(tr);
+  });
+}
+
+document.addEventListener('DOMContentLoaded',()=>{ showSection('home'); });
+</script>
+</body>
+</html>

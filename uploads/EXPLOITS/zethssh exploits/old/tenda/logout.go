@@ -1,0 +1,82 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"fmt"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+)
+
+func main() {
+	filePath := "successful.txt"
+	payload := []byte("save=Logout&submit-url=%2Flogin.asp")
+	contentLength := strconv.Itoa(len(payload))
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		fmt.Println("Error opening file:", err)
+		return
+	}
+	defer file.Close()
+
+	ipChannel := make(chan string, 10) // Channel to control concurrency
+	var wg sync.WaitGroup
+
+	// Launch worker goroutines
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for ip := range ipChannel {
+				url := fmt.Sprintf("http://%s/boaform/admin/formLogout", ip)
+
+				req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+				if err != nil {
+					fmt.Printf("Error creating request for %s: %s\n", ip, err)
+					continue
+				}
+
+				req.Header.Set("Host", ip)
+				req.Header.Set("Content-Length", contentLength)
+				req.Header.Set("Cache-Control", "max-age=0")
+				req.Header.Set("Upgrade-Insecure-Requests", "1")
+				req.Header.Set("Origin", fmt.Sprintf("http://%s", ip))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.199 Safari/537.36")
+				req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+				req.Header.Set("Referer", fmt.Sprintf("http://%s/", ip))
+				req.Header.Set("Accept-Encoding", "gzip, deflate")
+				req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+				req.Header.Set("Connection", "close")
+
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				if err != nil {
+					fmt.Printf("Error sending request to %s: %s\n", ip, err)
+					continue
+				}
+				defer resp.Body.Close()
+
+				fmt.Printf("Response status for %s: %s\n", ip, resp.Status)
+			}
+		}()
+	}
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		ip := strings.TrimSpace(scanner.Text())
+		ipChannel <- ip // Send IP to channel
+	}
+
+	close(ipChannel) // Close the channel to signal no more IPs
+
+	wg.Wait() // Wait for all workers to finish
+
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading file:", err)
+	}
+}

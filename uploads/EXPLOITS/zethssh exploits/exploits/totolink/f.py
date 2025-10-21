@@ -1,0 +1,48 @@
+import requests
+import base64
+
+FOFA_EMAIL = '597118859@qq.com'
+FOFA_KEY = '5dc4070c9dcd7eab52846d3a7922e0e4'
+
+def fofa_ips(query):
+    base_url = 'https://fofa.info'
+    search_url = f'{base_url}/api/v1/search/all'
+
+    query_base64 = base64.b64encode(query.encode('utf-8')).decode('utf-8')
+    params = {
+        'qbase64': query_base64,
+        'email': FOFA_EMAIL,
+        'key': FOFA_KEY,
+        'size': 30000
+    }
+
+    try:
+        response = requests.get(search_url, params=params)
+        if response.status_code == 200:
+            data = response.json()
+            ips = [result[0] for result in data['results']]
+            return ips
+        else:
+            print(f"Failed to retrieve data. Status code: {response.status_code}")
+    except requests.RequestException as e:
+        print(f"Request failed: {e}")
+
+def save_to_file(filename, ips):
+    try:
+        with open(filename, 'w') as file:
+            for ip in ips:
+                file.write(ip + '\n')
+        print(f"IPs saved to {filename}")
+    except IOError as e:
+        print(f"Error writing to file: {e}")
+
+if name == "main":
+    query = input("Enter FOFA query: ")
+    filename = input("Enter filename to save IPs: ")
+
+    ips = fofa_ips(query)
+
+    if ips:
+        save_to_file(filename, ips)
+    else:
+        print("No IPs found.")

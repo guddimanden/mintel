@@ -1,0 +1,129 @@
+package main
+
+import (
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"net/http"
+	"regexp"
+	"strings"
+	"time"
+)
+
+func extractNonceOpaque(headerValue string) (string, string) {
+	nonceMatch := regexp.MustCompile(`nonce="([^"]+)"`).FindStringSubmatch(headerValue)
+	opaqueMatch := regexp.MustCompile(`opaque="([^"]+)"`).FindStringSubmatch(headerValue)
+
+	nonce := ""
+	opaque := ""
+
+	if len(nonceMatch) > 1 {
+		nonce = nonceMatch[1]
+	}
+	if len(opaqueMatch) > 1 {
+		opaque = opaqueMatch[1]
+	}
+
+	return nonce, opaque
+}
+
+func calculateDigest(username, password, realm, method, uri, nonce, qop, nc, cnonce string) string {
+	A1 := fmt.Sprintf("%s:%s:%s", username, realm, password)
+	A2 := fmt.Sprintf("%s:%s", method, uri)
+
+	// Convert md5.Sum() result to a slice before using hex.EncodeToString
+	md5A1 := md5.Sum([]byte(A1))
+	md5A2 := md5.Sum([]byte(A2))
+
+	// Calculate response value
+	response := md5.New()
+	response.Write([]byte(fmt.Sprintf("%s:%s:%s:%s:%s:%s",
+		hex.EncodeToString(md5A1[:]),
+		nonce, nc, cnonce, qop,
+		hex.EncodeToString(md5A2[:]),
+	)))
+	return hex.EncodeToString(response.Sum(nil))
+}
+
+func sendAuthenticatedRequest(ipPort, nonce, opaque string) {
+	url := fmt.Sprintf("http://%s/admin/aindex_m.asp", ipPort)
+	username := "root"
+	password := "root" // Replace with the actual password
+
+	cnonce := generateCnonce()
+	nc := "00000002" // Update the nonce count for subsequent requests
+	qop := "auth"
+	algorithm := "MD5"
+
+	authorizationHeader := fmt.Sprintf(`Digest username="%s", realm="GoAhead", nonce="%s", uri="/admin/aindex_m.asp", algorithm=%s, response="%s", opaque="%s", qop=%s, nc=%s, cnonce="%s"`,
+		username, nonce, algorithm,
+		calculateDigest(username, password, "GoAhead", "GET", "/admin/aindex_m.asp", nonce, qop, nc, cnonce),
+		opaque, qop, nc, cnonce,
+	)
+
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		fmt.Printf("Error creating request: %v\n", err)
+		return
+	}
+
+	req.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.71 Safari/537.36")
+	req.Header.Add("Connection", "close")
+	req.Header.Add("Authorization", authorizationHeader)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("Error for %s: %v\n", url, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Print response headers and body
+	fmt.Printf("\nResponse Headers for %s:\n", url)
+	for key, values := range resp.Header {
+		fmt.Printf("%s: %s\n", key, strings.Join(values, ", "))
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Error reading response body: %v\n", err)
+		return
+	}
+	fmt.Printf("\nResponse Body:\n%s\n", body)
+}
+
+func generateCnonce() string {
+	const charset = "0123456789abcdef"
+	b := make([]byte, 16)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+func main() {
+	// Seed the random number generator
+	rand.Seed(time.Now().UnixNano())
+
+	// Read IP and port as a single string from ips.txt
+	data, err := ioutil.ReadFile("ips.txt")
+	if err != nil {
+		fmt.Printf("Error reading ips.txt: %v\n", err)
+		return
+	}
+
+	ipPorts := strings.Split(string(data), "\n")
+	for _, ipPort := range ipPorts {
+		ipPort = strings.TrimSpace(ipPort)
+		if ipPort == "" {
+			continue
+		}
+
+		// Replace with the actual header value
+		nonce, opaque := extractNonceOpaque("WWW-Authenticate header value")
+		sendAuthenticatedRequest(ipPort, nonce, opaque)
+	}
+}
